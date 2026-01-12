@@ -184,10 +184,10 @@ class AppDelegate(NSObject):
                             if new_levels[i] > self.levels[i]:
                                 self.levels[i] = new_levels[i]  # Rise instantly
                             else:
-                                self.levels[i] = self.levels[i] * 0.7 + new_levels[i] * 0.3  # Slower decay
+                                self.levels[i] = self.levels[i] * 0.8 + new_levels[i] * 0.2  # Even slower decay
                 elif self.recording:
                     # No new data but still recording - decay towards zero
-                    self.levels = [l * 0.75 for l in self.levels]
+                    self.levels = [l * 0.85 for l in self.levels]
                 else:
                     # Not recording - reset to zero
                     self.levels = [0.0] * 25

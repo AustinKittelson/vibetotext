@@ -10,6 +10,7 @@ from vibetotext.recorder import AudioRecorder, HotkeyListener
 from vibetotext.transcriber import Transcriber
 from vibetotext.context import search_context, format_context
 from vibetotext.greppy import search_files, format_files_for_context
+from vibetotext.llm import cleanup_text
 from vibetotext.output import paste_at_cursor
 
 
@@ -32,6 +33,11 @@ def main():
         "--greppy-hotkey",
         default="cmd+shift",
         help="Hotkey for Greppy semantic search mode (default: cmd+shift)",
+    )
+    parser.add_argument(
+        "--cleanup-hotkey",
+        default="alt+shift",
+        help="Hotkey for cleanup/refine mode (default: fn+shift)",
     )
     parser.add_argument(
         "--codebase",
@@ -76,10 +82,11 @@ def main():
     recorder = AudioRecorder()
     transcriber = Transcriber(model_name=args.model)
 
-    # Set up hotkeys for both modes
+    # Set up hotkeys for all modes
     hotkeys = {
         args.hotkey: "transcribe",
         args.greppy_hotkey: "greppy",
+        args.cleanup_hotkey: "cleanup",
     }
     listener = HotkeyListener(hotkeys=hotkeys)
 
@@ -93,6 +100,7 @@ def main():
     print(f"vibetotext ready.")
     print(f"  [{args.hotkey}] = transcribe + paste")
     print(f"  [{args.greppy_hotkey}] = transcribe + Greppy search + attach files")
+    print(f"  [{args.cleanup_hotkey}] = transcribe + cleanup/refine with Gemini")
     print("Press Ctrl+C to exit.\n")
 
     # Preload model
@@ -100,7 +108,8 @@ def main():
 
     def on_start(mode):
         current_mode[0] = mode
-        mode_label = "Greppy" if mode == "greppy" else "Transcribe"
+        mode_labels = {"greppy": "Greppy", "cleanup": "Cleanup", "transcribe": "Transcribe"}
+        mode_label = mode_labels.get(mode, "Transcribe")
         print(f"Recording ({mode_label})...", end="", flush=True)
         if ui:
             ui.show_recording()
@@ -140,6 +149,18 @@ def main():
             # Format output with file contents
             context = format_files_for_context(files)
             output = text + context
+
+        elif mode == "cleanup":
+            # Cleanup mode: use Gemini to refine rambling into clear prompt
+            print("Cleaning up with Gemini...", end="", flush=True)
+            refined = cleanup_text(text)
+            if refined:
+                print(" done.")
+                print(f"Refined: {refined[:100]}..." if len(refined) > 100 else f"Refined: {refined}")
+                output = refined
+            else:
+                print(" failed, using original.")
+                output = text
 
         else:
             # Regular transcribe mode
