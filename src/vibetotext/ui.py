@@ -182,9 +182,11 @@ class AppDelegate(NSObject):
                     if "level" in data and self.recording:
                         level = data["level"]
                         self.levels = self.levels[1:] + [level]
+                        # Debug: print level to stderr
+                        print(f"Level: {level:.3f}, max in buffer: {max(self.levels):.3f}", file=sys.stderr)
 
                     # Update view
-                    self.waveform_view.setLevels_recording_(self.levels, self.recording)
+                    self.waveform_view.setLevels_recording_(list(self.levels), self.recording)
         except Exception as e:
             pass
 
@@ -292,6 +294,9 @@ def update_waveform(level):
     """Update waveform with audio level (0.0 to 1.0)."""
     # Boost the level for better visibility
     boosted = min(1.0, level * 3)
+    # Debug: print to stderr
+    import sys
+    print(f"[UI] update_waveform called: raw={level:.4f}, boosted={boosted:.4f}", file=sys.stderr, flush=True)
     _write_ipc({"recording": True, "level": boosted})
 
 

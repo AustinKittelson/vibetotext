@@ -25,8 +25,8 @@ class AudioRecorder:
             # Calculate audio level (RMS)
             if self.on_level:
                 rms = np.sqrt(np.mean(indata**2))
-                # Normalize to 0-1 range (assuming typical speech levels)
-                level = min(1.0, rms * 10)
+                # Normalize to 0-1 range - boost significantly for visibility
+                level = min(1.0, rms * 50)  # Increased from 10 to 50
                 self.on_level(level)
 
     def start(self):
