@@ -39,8 +39,8 @@ def main():
     )
     parser.add_argument(
         "--plan-hotkey",
-        default="fn",
-        help="Hotkey for implementation plan mode (default: fn)",
+        default="cmd+alt",
+        help="Hotkey for implementation plan mode (default: cmd+alt)",
     )
     parser.add_argument(
         "--codebase",
@@ -101,11 +101,11 @@ def main():
     if ui:
         recorder.on_level = ui.update_waveform
 
-    print(f"vibetotext ready.")
+    print(f"vibetotext ready. Hold hotkey to record, release to process.")
     print(f"  [{args.hotkey}] = transcribe + paste")
-    print(f"  [{args.greppy_hotkey}] = transcribe + Greppy search + attach files")
-    print(f"  [{args.cleanup_hotkey}] = transcribe + cleanup/refine with Gemini")
-    print(f"  [{args.plan_hotkey}] = transcribe + implementation plan with Gemini")
+    print(f"  [{args.greppy_hotkey}] = Greppy search + attach files")
+    print(f"  [{args.cleanup_hotkey}] = cleanup/refine with Gemini")
+    print(f"  [{args.plan_hotkey}] = implementation plan with Gemini")
     print("Press Ctrl+C to exit.\n")
 
     # Preload model

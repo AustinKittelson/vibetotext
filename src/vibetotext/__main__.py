@@ -1,16 +1,14 @@
-"""Entry point for vibetotext."""
+"""Main CLI entry point."""
 
 import argparse
 import sys
-import threading
 import time
 
-# Use absolute imports for PyInstaller compatibility
 from vibetotext.recorder import AudioRecorder, HotkeyListener
 from vibetotext.transcriber import Transcriber
 from vibetotext.context import search_context, format_context
 from vibetotext.greppy import search_files, format_files_for_context
-from vibetotext.llm import cleanup_text
+from vibetotext.llm import cleanup_text, generate_implementation_plan
 from vibetotext.output import paste_at_cursor
 
 
@@ -37,7 +35,12 @@ def main():
     parser.add_argument(
         "--cleanup-hotkey",
         default="alt+shift",
-        help="Hotkey for cleanup/refine mode (default: fn+shift)",
+        help="Hotkey for cleanup/refine mode (default: alt+shift)",
+    )
+    parser.add_argument(
+        "--plan-hotkey",
+        default="cmd+alt",
+        help="Hotkey for implementation plan mode (default: cmd+alt)",
     )
     parser.add_argument(
         "--codebase",
@@ -87,6 +90,7 @@ def main():
         args.hotkey: "transcribe",
         args.greppy_hotkey: "greppy",
         args.cleanup_hotkey: "cleanup",
+        args.plan_hotkey: "plan",
     }
     listener = HotkeyListener(hotkeys=hotkeys)
 
@@ -97,10 +101,11 @@ def main():
     if ui:
         recorder.on_level = ui.update_waveform
 
-    print(f"vibetotext ready.")
+    print(f"vibetotext ready. Hold hotkey to record, release to process.")
     print(f"  [{args.hotkey}] = transcribe + paste")
-    print(f"  [{args.greppy_hotkey}] = transcribe + Greppy search + attach files")
-    print(f"  [{args.cleanup_hotkey}] = transcribe + cleanup/refine with Gemini")
+    print(f"  [{args.greppy_hotkey}] = Greppy search + attach files")
+    print(f"  [{args.cleanup_hotkey}] = cleanup/refine with Gemini")
+    print(f"  [{args.plan_hotkey}] = implementation plan with Gemini")
     print("Press Ctrl+C to exit.\n")
 
     # Preload model
@@ -108,7 +113,7 @@ def main():
 
     def on_start(mode):
         current_mode[0] = mode
-        mode_labels = {"greppy": "Greppy", "cleanup": "Cleanup", "transcribe": "Transcribe"}
+        mode_labels = {"greppy": "Greppy", "cleanup": "Cleanup", "transcribe": "Transcribe", "plan": "Plan"}
         mode_label = mode_labels.get(mode, "Transcribe")
         print(f"Recording ({mode_label})...", end="", flush=True)
         if ui:
@@ -158,6 +163,18 @@ def main():
                 print(" done.")
                 print(f"Refined: {refined[:100]}..." if len(refined) > 100 else f"Refined: {refined}")
                 output = refined
+            else:
+                print(" failed, using original.")
+                output = text
+
+        elif mode == "plan":
+            # Plan mode: use Gemini to generate implementation plan
+            print("Generating implementation plan...", end="", flush=True)
+            plan = generate_implementation_plan(text)
+            if plan:
+                print(" done.")
+                print(f"Plan: {plan[:150]}..." if len(plan) > 150 else f"Plan: {plan}")
+                output = plan
             else:
                 print(" failed, using original.")
                 output = text
