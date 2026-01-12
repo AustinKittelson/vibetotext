@@ -22,30 +22,44 @@ class AudioRecorder:
         if self.recording:
             self._audio_data.append(indata.copy())
 
-            # Calculate frequency spectrum for waveform visualization
+            # Debug: always write to file to confirm callback runs
+            if not hasattr(self, '_cb_count'):
+                self._cb_count = 0
+            self._cb_count += 1
+            if self._cb_count <= 3:
+                with open('/tmp/vibetotext_callback_debug.txt', 'a') as f:
+                    f.write(f"Callback #{self._cb_count}, on_level={self.on_level is not None}\n")
+
+            # Calculate waveform visualization based on audio amplitude
             if self.on_level:
-                # Flatten to 1D
                 audio = indata.flatten()
 
-                # Apply FFT to get frequency spectrum
-                fft = np.abs(np.fft.rfft(audio))
+                # Get RMS (overall volume)
+                rms = np.sqrt(np.mean(audio**2))
 
-                # Split into 25 frequency bands
+                # Scale RMS: 0.001 (quiet) → 0.1, 0.005 (normal) → 0.5, 0.01 (loud) → 1.0
+                base_level = min(1.0, rms * 100)
+
+                # Create 25 bars with variation based on audio samples
                 num_bars = 25
-                band_size = len(fft) // num_bars
+                levels = []
 
-                if band_size > 0:
-                    levels = []
+                # Use actual audio samples to create variation across bars
+                if len(audio) >= num_bars:
+                    step = len(audio) // num_bars
                     for i in range(num_bars):
-                        start = i * band_size
-                        end = start + band_size
-                        band_magnitude = np.mean(fft[start:end])
-                        # Normalize and boost for visibility
-                        level = min(1.0, band_magnitude * 0.5)
+                        sample = abs(audio[i * step])
+                        # Combine base level with sample variation
+                        level = min(1.0, (base_level * 0.7) + (sample * 50))
                         levels.append(level)
-                    self.on_level(levels)
                 else:
-                    self.on_level([0.0] * num_bars)
+                    # Fallback: use base level with random variation
+                    for i in range(num_bars):
+                        variation = np.random.uniform(0.7, 1.3)
+                        level = min(1.0, base_level * variation)
+                        levels.append(level)
+
+                self.on_level(levels)
 
     def start(self):
         """Start recording."""

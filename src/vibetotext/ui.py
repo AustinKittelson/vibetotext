@@ -181,6 +181,8 @@ class AppDelegate(NSObject):
                     # Update frequency band levels
                     if "levels" in data and self.recording:
                         self.levels = data["levels"]
+                        max_level = max(self.levels) if self.levels else 0
+                        print(f"Levels received: max={max_level:.3f}, count={len(self.levels)}", file=sys.stderr)
 
                     # Update view
                     self.waveform_view.setLevels_recording_(list(self.levels), self.recording)
@@ -289,9 +291,8 @@ def hide_recording():
 
 def update_waveform(levels):
     """Update waveform with frequency band levels (list of 0.0 to 1.0)."""
-    # Boost levels for visibility
-    boosted = [min(1.0, l * 3) for l in levels]
-    _write_ipc({"recording": True, "levels": boosted})
+    # Pass through directly - scaling done in recorder
+    _write_ipc({"recording": True, "levels": levels})
 
 
 def process_ui_events():
