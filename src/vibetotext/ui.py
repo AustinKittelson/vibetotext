@@ -1,4 +1,4 @@
-"""Floating recording indicator with waveform - subprocess version."""
+"""Floating recording indicator with waveform - pure PyObjC NSPanel version."""
 
 import json
 import os
@@ -11,127 +11,211 @@ _ipc_file = os.path.join(tempfile.gettempdir(), "vibetotext_ui_ipc.json")
 _ui_process = None
 
 
-# The UI script that runs in its own process
+# The UI script that runs in its own process - uses native NSPanel
 UI_SCRIPT = '''
 import json
 import os
 import sys
+import time
 
-os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "1"
-import pygame
+# PyObjC imports
+from AppKit import (
+    NSApplication, NSApp, NSPanel, NSView, NSColor, NSBezierPath,
+    NSBackingStoreBuffered, NSMakeRect, NSFloatingWindowLevel,
+    NSWindowStyleMaskBorderless, NSWindowCollectionBehaviorCanJoinAllSpaces,
+    NSWindowCollectionBehaviorStationary, NSTimer, NSRunLoop,
+    NSDefaultRunLoopMode
+)
+from Foundation import NSObject
+from Quartz import kCGMaximumWindowLevelKey, CGWindowLevelForKey
+import objc
 
 IPC_FILE = sys.argv[1]
 
-def main():
-    pygame.init()
 
-    width = 280
-    height = 50
+class WaveformView(NSView):
+    """Custom view that draws the waveform."""
 
-    screen = pygame.display.set_mode((width, height), pygame.NOFRAME)
-    pygame.display.set_caption("")
+    def initWithFrame_(self, frame):
+        self = objc.super(WaveformView, self).initWithFrame_(frame)
+        if self:
+            self.levels = [0.0] * 30
+            self.recording = False
+        return self
 
-    # Get window handle for positioning
-    try:
-        from pygame._sdl2 import Window
-        window = Window.from_display_module()
-    except:
-        window = None
+    def setLevels_recording_(self, levels, recording):
+        self.levels = levels
+        self.recording = recording
+        self.setNeedsDisplay_(True)
 
-    clock = pygame.time.Clock()
-    bg_color = (26, 26, 26)
-    bar_color = (255, 102, 153)  # Pink when recording
-    idle_color = (80, 80, 80)    # Gray when idle
+    def drawRect_(self, rect):
+        # Draw background
+        NSColor.colorWithCalibratedRed_green_blue_alpha_(0.1, 0.1, 0.1, 0.95).set()
+        NSBezierPath.fillRect_(rect)
 
-    levels = [0.0] * 30
-    recording = False
-    last_mtime = 0
+        width = rect.size.width
+        height = rect.size.height
+        bar_width = 6
+        bar_spacing = 3
+        num_bars = len(self.levels)
+        total_width = num_bars * (bar_width + bar_spacing)
+        start_x = (width - total_width) / 2 + 10
+        center_y = height / 2
 
-    running = True
-    while running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-                break
+        if self.recording:
+            # Pink color for recording
+            NSColor.colorWithCalibratedRed_green_blue_alpha_(1.0, 0.4, 0.6, 1.0).set()
+            for i, level in enumerate(self.levels):
+                x = start_x + i * (bar_width + bar_spacing)
+                bar_height = max(6, level * height * 0.8)
+                bar_height = min(bar_height, height * 0.85)
+                y = center_y - bar_height / 2
+                NSBezierPath.fillRect_(NSMakeRect(x, y, bar_width, bar_height))
+        else:
+            # Gray color for idle
+            NSColor.colorWithCalibratedRed_green_blue_alpha_(0.35, 0.35, 0.35, 1.0).set()
+            for i in range(num_bars):
+                x = start_x + i * (bar_width + bar_spacing)
+                NSBezierPath.fillRect_(NSMakeRect(x, center_y - 2, bar_width, 4))
 
+
+class AppDelegate(NSObject):
+    def init(self):
+        self = objc.super(AppDelegate, self).init()
+        if self:
+            self.levels = [0.0] * 30
+            self.recording = False
+            self.last_mtime = 0
+            self.panel = None
+            self.waveform_view = None
+        return self
+
+    def applicationDidFinishLaunching_(self, notification):
+        # Create floating panel
+        width = 280
+        height = 40
+
+        self.panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
+            NSMakeRect(100, 100, width, height),
+            NSWindowStyleMaskBorderless,
+            NSBackingStoreBuffered,
+            False
+        )
+
+        # Set as floating panel - VERY HIGH level
+        self.panel.setLevel_(CGWindowLevelForKey(kCGMaximumWindowLevelKey))
+        self.panel.setFloatingPanel_(True)
+        self.panel.setHidesOnDeactivate_(False)
+        self.panel.setCanHide_(False)
+
+        # Visible on all spaces, stationary (not affected by Expose)
+        self.panel.setCollectionBehavior_(
+            NSWindowCollectionBehaviorCanJoinAllSpaces |
+            NSWindowCollectionBehaviorStationary
+        )
+
+        # Transparent background, non-opaque
+        self.panel.setOpaque_(False)
+        self.panel.setBackgroundColor_(NSColor.clearColor())
+
+        # Create waveform view
+        self.waveform_view = WaveformView.alloc().initWithFrame_(
+            NSMakeRect(0, 0, width, height)
+        )
+        self.panel.setContentView_(self.waveform_view)
+
+        # Show the panel
+        self.panel.orderFrontRegardless()
+
+        # Start update timer
+        self.timer = NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+            0.033,  # ~30fps
+            self,
+            "update:",
+            None,
+            True
+        )
+
+    def update_(self, timer):
         # Read IPC file
         try:
             if os.path.exists(IPC_FILE):
                 mtime = os.path.getmtime(IPC_FILE)
-                if mtime > last_mtime:
-                    last_mtime = mtime
+                if mtime > self.last_mtime:
+                    self.last_mtime = mtime
                     with open(IPC_FILE, "r") as f:
                         data = json.load(f)
 
                     if data.get("stop"):
-                        running = False
-                        break
+                        NSApp.terminate_(None)
+                        return
 
-                    # Update recording state
-                    recording = data.get("recording", False)
+                    was_recording = self.recording
+                    self.recording = data.get("recording", False)
 
-                    # Position window near cursor when recording starts
-                    if window and "cursor_x" in data and "cursor_y" in data:
-                        cx = data["cursor_x"]
-                        cy = data["cursor_y"]
-                        # Position below cursor, centered horizontally
+                    # Position when recording starts
+                    if self.recording and not was_recording:
+                        cx = data.get("cursor_x", 500)
+                        screen_bottom = data.get("screen_bottom", 900)
+                        width = 280
+                        height = 40
                         new_x = cx - width // 2
-                        new_y = cy + 60  # 60px below cursor
-                        window.position = (new_x, new_y)
+                        new_y = screen_bottom - height - 80
 
-                    # Update levels if recording
-                    if "level" in data and recording:
-                        levels = levels[1:] + [data["level"]]
-        except:
+                        # Position and bring to front
+                        self.panel.setFrameOrigin_((new_x, new_y))
+                        self.panel.orderFrontRegardless()
+
+                    # Update levels
+                    if "level" in data and self.recording:
+                        level = data["level"]
+                        self.levels = self.levels[1:] + [level]
+
+                    # Update view
+                    self.waveform_view.setLevels_recording_(self.levels, self.recording)
+        except Exception as e:
             pass
 
-        # Always draw - waveform when recording, flat line when idle
-        screen.fill(bg_color)
 
-        bar_width = 6
-        bar_spacing = 3
-        num_bars = len(levels)
-        total_width = num_bars * (bar_width + bar_spacing)
-        start_x = (width - total_width) // 2 + 10
-        center_y = height // 2
+def main():
+    app = NSApplication.sharedApplication()
+    delegate = AppDelegate.alloc().init()
+    app.setDelegate_(delegate)
+    app.setActivationPolicy_(2)  # NSApplicationActivationPolicyAccessory - no dock icon
+    app.run()
 
-        if recording:
-            # Animated waveform
-            for i, level in enumerate(levels):
-                x = start_x + i * (bar_width + bar_spacing)
-                bar_height = max(4, min(int(level * height * 0.7), int(height * 0.7)))
-                y1 = center_y - bar_height // 2
-                pygame.draw.rect(screen, bar_color, (x, y1, bar_width, bar_height))
-        else:
-            # Flat idle line
-            for i in range(num_bars):
-                x = start_x + i * (bar_width + bar_spacing)
-                pygame.draw.rect(screen, idle_color, (x, center_y - 2, bar_width, 4))
-
-        pygame.display.flip()
-        clock.tick(33)
-
-    pygame.quit()
-
-    try:
-        os.remove(IPC_FILE)
-    except:
-        pass
 
 if __name__ == "__main__":
     main()
 '''
 
 
-def _get_cursor_position():
-    """Get current cursor position using Quartz."""
+def _get_cursor_and_screen():
+    """Get cursor position and screen bottom using Quartz."""
     try:
         from Quartz import CGEventCreate, CGEventGetLocation
+        from AppKit import NSScreen
+
+        # Get cursor position
         event = CGEventCreate(None)
         pos = CGEventGetLocation(event)
-        return int(pos.x), int(pos.y)
+        cursor_x, cursor_y = int(pos.x), int(pos.y)
+
+        # Find which screen the cursor is on and get its bottom
+        for screen in NSScreen.screens():
+            frame = screen.frame()
+            if (frame.origin.x <= cursor_x <= frame.origin.x + frame.size.width and
+                frame.origin.y <= cursor_y <= frame.origin.y + frame.size.height):
+                # Screen bottom in flipped coordinates (for NSPanel positioning)
+                # NSPanel uses bottom-left origin, so we need the actual Y value
+                screen_bottom = int(frame.origin.y + frame.size.height)
+                return cursor_x, cursor_y, screen_bottom
+
+        # Fallback to main screen
+        main = NSScreen.mainScreen().frame()
+        return cursor_x, cursor_y, int(main.size.height)
     except Exception:
-        return 500, 500  # Fallback
+        return 500, 500, 1000
 
 
 def _write_ipc(data):
@@ -159,23 +243,26 @@ def _ensure_ui_process():
     if os.path.exists(_ipc_file):
         os.remove(_ipc_file)
 
-    # Start the UI process
-    _ui_process = subprocess.Popen(
-        [sys.executable, script_file, _ipc_file],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    # Start the UI process with error logging
+    error_log = os.path.join(tempfile.gettempdir(), "vibetotext_ui_error.log")
+    with open(error_log, "w") as err_file:
+        _ui_process = subprocess.Popen(
+            [sys.executable, script_file, _ipc_file],
+            stdout=subprocess.PIPE,
+            stderr=err_file,
+        )
 
 
 def show_recording():
     """Show recording indicator near cursor."""
     _ensure_ui_process()
-    cx, cy = _get_cursor_position()
+    cx, cy, screen_bottom = _get_cursor_and_screen()
     _write_ipc({
         "recording": True,
         "level": 0.0,
         "cursor_x": cx,
         "cursor_y": cy,
+        "screen_bottom": screen_bottom,
     })
 
 
@@ -186,7 +273,9 @@ def hide_recording():
 
 def update_waveform(level):
     """Update waveform with audio level (0.0 to 1.0)."""
-    _write_ipc({"recording": True, "level": level})
+    # Boost the level for better visibility
+    boosted = min(1.0, level * 3)
+    _write_ipc({"recording": True, "level": boosted})
 
 
 def process_ui_events():
