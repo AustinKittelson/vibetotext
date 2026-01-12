@@ -146,46 +146,54 @@ class AppDelegate(NSObject):
         )
 
     def update_(self, timer):
-        # Read IPC file
+        # Read IPC file every tick (don't rely on mtime which has low resolution)
         try:
             if os.path.exists(IPC_FILE):
-                mtime = os.path.getmtime(IPC_FILE)
-                if mtime > self.last_mtime:
-                    self.last_mtime = mtime
-                    with open(IPC_FILE, "r") as f:
-                        data = json.load(f)
+                with open(IPC_FILE, "r") as f:
+                    data = json.load(f)
 
-                    if data.get("stop"):
-                        NSApp.terminate_(None)
-                        return
+                if data.get("stop"):
+                    NSApp.terminate_(None)
+                    return
 
-                    was_recording = self.recording
-                    self.recording = data.get("recording", False)
+                was_recording = self.recording
+                self.recording = data.get("recording", False)
 
-                    # Position when recording starts
-                    if self.recording and not was_recording:
-                        screen_x = data.get("screen_x", 0)
-                        screen_y = data.get("screen_y", 0)
-                        screen_w = data.get("screen_w", 1920)
-                        width = 280
-                        height = 40
-                        # Center horizontally on the screen
-                        new_x = screen_x + (screen_w - width) // 2
-                        # Position 40px from bottom of screen
-                        new_y = screen_y + 40
+                # Position when recording starts
+                if self.recording and not was_recording:
+                    screen_x = data.get("screen_x", 0)
+                    screen_y = data.get("screen_y", 0)
+                    screen_w = data.get("screen_w", 1920)
+                    width = 280
+                    height = 40
+                    # Center horizontally on the screen
+                    new_x = screen_x + (screen_w - width) // 2
+                    # Position 40px from bottom of screen
+                    new_y = screen_y + 40
 
-                        # Position and bring to front
-                        self.panel.setFrameOrigin_((new_x, new_y))
-                        self.panel.orderFrontRegardless()
+                    # Position and bring to front
+                    self.panel.setFrameOrigin_((new_x, new_y))
+                    self.panel.orderFrontRegardless()
 
-                    # Update frequency band levels
-                    if "levels" in data and self.recording:
-                        self.levels = data["levels"]
-                        max_level = max(self.levels) if self.levels else 0
-                        print(f"Levels received: max={max_level:.3f}, count={len(self.levels)}", file=sys.stderr)
+                # Update frequency band levels with decay
+                if "levels" in data and self.recording:
+                    new_levels = data["levels"]
+                    # Smooth transition: rise fast, fall slower
+                    for i in range(len(self.levels)):
+                        if i < len(new_levels):
+                            if new_levels[i] > self.levels[i]:
+                                self.levels[i] = new_levels[i]  # Rise instantly
+                            else:
+                                self.levels[i] = self.levels[i] * 0.7 + new_levels[i] * 0.3  # Decay smoothly
+                elif self.recording:
+                    # No new data but still recording - decay towards zero
+                    self.levels = [l * 0.85 for l in self.levels]
+                else:
+                    # Not recording - reset to zero
+                    self.levels = [0.0] * 25
 
-                    # Update view
-                    self.waveform_view.setLevels_recording_(list(self.levels), self.recording)
+                # Update view
+                self.waveform_view.setLevels_recording_(list(self.levels), self.recording)
         except Exception as e:
             pass
 
@@ -239,10 +247,13 @@ def _get_cursor_and_screen():
 
 
 def _write_ipc(data):
-    """Write data to IPC file."""
+    """Write data to IPC file atomically."""
     try:
-        with open(_ipc_file, "w") as f:
+        # Write to temp file first, then rename (atomic)
+        tmp_file = _ipc_file + ".tmp"
+        with open(tmp_file, "w") as f:
             json.dump(data, f)
+        os.replace(tmp_file, _ipc_file)  # Atomic rename
     except Exception:
         pass
 
@@ -289,10 +300,14 @@ def hide_recording():
     _write_ipc({"recording": False})
 
 
+_update_counter = 0
+
 def update_waveform(levels):
     """Update waveform with frequency band levels (list of 0.0 to 1.0)."""
-    # Pass through directly - scaling done in recorder
-    _write_ipc({"recording": True, "levels": levels})
+    global _update_counter
+    _update_counter += 1
+    # Include counter so UI can detect changes even when mtime doesn't update
+    _write_ipc({"recording": True, "levels": levels, "seq": _update_counter})
 
 
 def process_ui_events():
