@@ -9,6 +9,7 @@ import time
 from vibetotext.recorder import AudioRecorder, HotkeyListener
 from vibetotext.transcriber import Transcriber
 from vibetotext.context import search_context, format_context
+from vibetotext.greppy import search_files, format_files_for_context
 from vibetotext.output import paste_at_cursor
 
 
@@ -28,6 +29,16 @@ def main():
         help="Hotkey to hold while speaking (default: ctrl+shift)",
     )
     parser.add_argument(
+        "--greppy-hotkey",
+        default="cmd+shift",
+        help="Hotkey for Greppy semantic search mode (default: cmd+shift)",
+    )
+    parser.add_argument(
+        "--codebase",
+        default=None,
+        help="Path to codebase for Greppy search (default: datafeeds)",
+    )
+    parser.add_argument(
         "--no-context",
         action="store_true",
         help="Disable automatic code context injection",
@@ -37,6 +48,12 @@ def main():
         type=int,
         default=5,
         help="Max number of code snippets to include (default: 5)",
+    )
+    parser.add_argument(
+        "--greppy-limit",
+        type=int,
+        default=10,
+        help="Max number of files for Greppy search (default: 10)",
     )
     parser.add_argument(
         "--no-ui",
@@ -58,26 +75,38 @@ def main():
     # Initialize components
     recorder = AudioRecorder()
     transcriber = Transcriber(model_name=args.model)
-    listener = HotkeyListener(hotkey=args.hotkey)
+
+    # Set up hotkeys for both modes
+    hotkeys = {
+        args.hotkey: "transcribe",
+        args.greppy_hotkey: "greppy",
+    }
+    listener = HotkeyListener(hotkeys=hotkeys)
+
+    # Track current mode
+    current_mode = [None]  # Use list to allow mutation in nested function
 
     # Set up audio level callback for UI
     if ui:
         recorder.on_level = ui.update_waveform
 
-    print(f"vibetotext ready. Hold [{args.hotkey}] to record.")
-    print("Release to transcribe and paste at cursor.")
+    print(f"vibetotext ready.")
+    print(f"  [{args.hotkey}] = transcribe + paste")
+    print(f"  [{args.greppy_hotkey}] = transcribe + Greppy search + attach files")
     print("Press Ctrl+C to exit.\n")
 
     # Preload model
     _ = transcriber.model
 
-    def on_start():
-        print("Recording...", end="", flush=True)
+    def on_start(mode):
+        current_mode[0] = mode
+        mode_label = "Greppy" if mode == "greppy" else "Transcribe"
+        print(f"Recording ({mode_label})...", end="", flush=True)
         if ui:
             ui.show_recording()
         recorder.start()
 
-    def on_stop():
+    def on_stop(mode):
         audio = recorder.stop()
         if ui:
             ui.hide_recording()
@@ -98,17 +127,30 @@ def main():
 
         print(f"Transcribed: {text}")
 
-        # Get code context
-        if not args.no_context:
-            print("Searching for relevant code...", end="", flush=True)
-            snippets = search_context(text, limit=args.context_limit)
-            context = format_context(snippets)
-            print(f" found {len(snippets)} snippets.")
+        if mode == "greppy":
+            # Greppy mode: search for relevant files and attach them
+            print("Searching with Greppy...", end="", flush=True)
+            files = search_files(text, limit=args.greppy_limit, codebase=args.codebase)
+            print(f" found {len(files)} files.")
 
-            # Combine transcript + context
+            if files:
+                for filepath, line_num in files:
+                    print(f"  - {filepath}:{line_num}")
+
+            # Format output with file contents
+            context = format_files_for_context(files)
             output = text + context
+
         else:
-            output = text
+            # Regular transcribe mode
+            if not args.no_context:
+                print("Searching for relevant code...", end="", flush=True)
+                snippets = search_context(text, limit=args.context_limit)
+                context = format_context(snippets)
+                print(f" found {len(snippets)} snippets.")
+                output = text + context
+            else:
+                output = text
 
         # Paste at cursor
         paste_at_cursor(output)

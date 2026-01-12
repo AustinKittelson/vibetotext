@@ -99,24 +99,35 @@ class AudioRecorder:
 
 
 class HotkeyListener:
-    """Listens for hotkey to toggle recording."""
+    """Listens for multiple hotkeys to toggle recording."""
 
-    def __init__(self, hotkey: str = "ctrl+shift"):
-        self.hotkey = hotkey
-        self.on_start = None
-        self.on_stop = None
+    def __init__(self, hotkeys: dict = None):
+        """
+        Args:
+            hotkeys: Dict mapping hotkey strings to mode names.
+                     e.g. {"ctrl+shift": "transcribe", "cmd+shift": "greppy"}
+        """
+        if hotkeys is None:
+            hotkeys = {"ctrl+shift": "transcribe"}
+        self.hotkeys = hotkeys
+        self.on_start = None  # Called with mode name
+        self.on_stop = None   # Called with mode name
         self._pressed = set()
         self._recording = False
+        self._active_mode = None
 
     def start(self, on_start, on_stop):
-        """Start listening for hotkey."""
+        """Start listening for hotkeys."""
         from pynput import keyboard
 
         self.on_start = on_start
         self.on_stop = on_stop
 
-        # Parse hotkey
-        self._hotkey_parts = set(self.hotkey.lower().split("+"))
+        # Parse all hotkeys
+        self._parsed_hotkeys = {}
+        for hotkey, mode in self.hotkeys.items():
+            parts = set(hotkey.lower().split("+"))
+            self._parsed_hotkeys[mode] = parts
 
         def on_press(key):
             try:
@@ -126,12 +137,18 @@ class HotkeyListener:
 
             self._pressed.add(key_name)
 
-            # Check if hotkey combo is pressed
-            if self._hotkey_parts.issubset(self._pressed):
-                if not self._recording:
-                    self._recording = True
-                    if self.on_start:
-                        self.on_start()
+            # Check if any hotkey combo is pressed (check longer combos first)
+            if not self._recording:
+                # Sort by length descending to match most specific first
+                for mode, parts in sorted(self._parsed_hotkeys.items(),
+                                          key=lambda x: len(x[1]), reverse=True):
+                    if parts.issubset(self._pressed):
+                        self._recording = True
+                        self._active_mode = mode
+                        self._active_parts = parts
+                        if self.on_start:
+                            self.on_start(mode)
+                        break
 
         def on_release(key):
             try:
@@ -140,12 +157,15 @@ class HotkeyListener:
                 return
 
             # If any hotkey part is released while recording, stop
-            if self._recording and key_name in self._hotkey_parts:
+            if self._recording and key_name in self._active_parts:
+                mode = self._active_mode
                 self._recording = False
+                self._active_mode = None
+                self._active_parts = None
                 # Clear pressed set to avoid stale state
                 self._pressed.clear()
                 if self.on_stop:
-                    self.on_stop()
+                    self.on_stop(mode)
             else:
                 self._pressed.discard(key_name)
 

@@ -178,16 +178,16 @@ class AppDelegate(NSObject):
                 # Update frequency band levels with decay
                 if "levels" in data and self.recording:
                     new_levels = data["levels"]
-                    # Smooth transition: rise fast, fall faster
+                    # Smooth transition: rise fast, fall smoothly
                     for i in range(len(self.levels)):
                         if i < len(new_levels):
                             if new_levels[i] > self.levels[i]:
                                 self.levels[i] = new_levels[i]  # Rise instantly
                             else:
-                                self.levels[i] = self.levels[i] * 0.4 + new_levels[i] * 0.6  # Decay faster
+                                self.levels[i] = self.levels[i] * 0.7 + new_levels[i] * 0.3  # Slower decay
                 elif self.recording:
                     # No new data but still recording - decay towards zero
-                    self.levels = [l * 0.5 for l in self.levels]
+                    self.levels = [l * 0.75 for l in self.levels]
                 else:
                     # Not recording - reset to zero
                     self.levels = [0.0] * 25
