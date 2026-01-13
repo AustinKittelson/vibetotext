@@ -57,26 +57,49 @@ def get_running_app_info():
 
 
 def simulate_paste():
-    """Simulate Cmd+V using AppleScript (more reliable than CGEventPost)."""
+    """Simulate Cmd+V using CGEventPost (fast, native)."""
     try:
-        print("[DEBUG] Using AppleScript to paste...")
-        result = subprocess.run(
-            ['osascript', '-e', 'tell application "System Events" to keystroke "v" using command down'],
-            capture_output=True,
-            text=True,
-            timeout=5
+        from Quartz import (
+            CGEventCreateKeyboardEvent,
+            CGEventPost,
+            kCGHIDEventTap,
+            CGEventSetFlags,
+            kCGEventFlagMaskCommand,
         )
-        if result.returncode == 0:
-            print("[DEBUG] AppleScript paste successful")
-            return True
-        else:
-            print(f"[DEBUG] AppleScript failed: {result.stderr}")
-            return False
+
+        print("[DEBUG] Using CGEventPost to paste...")
+
+        # Key code for 'v' is 9
+        v_keycode = 9
+
+        # Create key down event with Command modifier
+        key_down = CGEventCreateKeyboardEvent(None, v_keycode, True)
+        CGEventSetFlags(key_down, kCGEventFlagMaskCommand)
+
+        # Create key up event with Command modifier
+        key_up = CGEventCreateKeyboardEvent(None, v_keycode, False)
+        CGEventSetFlags(key_up, kCGEventFlagMaskCommand)
+
+        # Post events
+        CGEventPost(kCGHIDEventTap, key_down)
+        CGEventPost(kCGHIDEventTap, key_up)
+
+        print("[DEBUG] CGEventPost paste successful")
+        return True
     except Exception as e:
-        print(f"[DEBUG] simulate_paste() exception: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
+        print(f"[DEBUG] CGEventPost failed: {e}, falling back to AppleScript")
+        # Fallback to AppleScript
+        try:
+            result = subprocess.run(
+                ['osascript', '-e', 'tell application "System Events" to keystroke "v" using command down'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            return result.returncode == 0
+        except Exception as e2:
+            print(f"[DEBUG] AppleScript fallback also failed: {e2}")
+            return False
 
 
 def paste_at_cursor(text: str):
@@ -94,7 +117,7 @@ def paste_at_cursor(text: str):
     # Check permission
     if has_accessibility_permission():
         print("[DEBUG] Have accessibility permission, attempting auto-paste...")
-        time.sleep(0.3)  # Wait for hotkey modifiers to be fully released
+        time.sleep(0.1)  # Wait for hotkey modifiers to be fully released
 
         if simulate_paste():
             print("[DEBUG] Auto-paste attempted")
