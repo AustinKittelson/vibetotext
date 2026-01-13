@@ -69,6 +69,12 @@ def main():
         action="store_true",
         help="Disable visual recording indicator",
     )
+    parser.add_argument(
+        "--device",
+        type=int,
+        default=1,  # Shure MV7i
+        help="Audio input device index (default: 1 for Shure MV7i)",
+    )
 
     args = parser.parse_args()
 
@@ -80,6 +86,19 @@ def main():
             ui = ui_module
         except Exception as e:
             print(f"UI disabled: {e}")
+
+    # Set audio device
+    import sounddevice as sd
+    sd.default.device[0] = args.device  # Set input device
+
+    # Log available audio devices
+    print("\n[AUDIO] Available input devices:")
+    devices = sd.query_devices()
+    for i, dev in enumerate(devices):
+        if dev['max_input_channels'] > 0:
+            marker = " <-- SELECTED" if i == args.device else ""
+            print(f"  [{i}] {dev['name']} ({dev['max_input_channels']} ch){marker}")
+    print()
 
     # Initialize components
     recorder = AudioRecorder()

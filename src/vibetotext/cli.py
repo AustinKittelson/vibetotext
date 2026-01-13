@@ -10,6 +10,7 @@ from .context import search_context, format_context
 from .greppy import search_files, format_files_for_context
 from .llm import cleanup_text, generate_implementation_plan
 from .output import paste_at_cursor
+from .history import TranscriptionHistory
 
 
 def main():
@@ -84,6 +85,22 @@ def main():
     # Initialize components
     recorder = AudioRecorder()
     transcriber = Transcriber(model_name=args.model)
+    history = TranscriptionHistory()
+
+    # Log available audio devices
+    import sounddevice as sd
+    import sys
+    try:
+        print("\n[AUDIO] Available input devices:", flush=True)
+        devices = sd.query_devices()
+        for i, dev in enumerate(devices):
+            if dev['max_input_channels'] > 0:
+                marker = " <-- DEFAULT" if i == sd.default.device[0] else ""
+                print(f"  [{i}] {dev['name']} ({dev['max_input_channels']} ch){marker}", flush=True)
+        print(flush=True)
+        sys.stdout.flush()
+    except Exception as e:
+        print(f"[AUDIO] Error listing devices: {e}", flush=True)
 
     # Set up hotkeys for all modes
     hotkeys = {
@@ -189,6 +206,10 @@ def main():
                 output = text + context
             else:
                 output = text
+
+        # Save to history
+        history.add_entry(text, mode)
+        print(f"[DEBUG] Saved to history: {text[:50]}... mode={mode}")
 
         # Paste at cursor
         paste_at_cursor(output)

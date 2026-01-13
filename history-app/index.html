@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VibeToText History</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>Transcription History</h1>
+      <div class="stats" id="stats">
+        <span class="stat">
+          <span class="stat-value" id="total-sessions">0</span>
+          <span class="stat-label">sessions</span>
+        </span>
+        <span class="stat">
+          <span class="stat-value" id="total-words">0</span>
+          <span class="stat-label">words</span>
+        </span>
+      </div>
+    </header>
+
+    <div class="common-words" id="common-words-section">
+      <h3>Common Words</h3>
+      <div class="word-chips" id="common-words"></div>
+    </div>
+
+    <div class="entries" id="entries">
+      <!-- Entries will be populated by JavaScript -->
+    </div>
+
+    <div class="empty-state" id="empty-state" style="display: none;">
+      <p>No transcriptions yet</p>
+      <p class="hint">Use ctrl+shift to start recording</p>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

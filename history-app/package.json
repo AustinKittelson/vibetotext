@@ -1,0 +1,27 @@
+{
+  "name": "vibetotext-history",
+  "version": "1.0.0",
+  "description": "History viewer for VibeToText transcriptions",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "dependencies": {
+    "chokidar": "^3.5.3"
+  },
+  "build": {
+    "appId": "com.vibetotext.history",
+    "productName": "VibeToText History",
+    "mac": {
+      "category": "public.app-category.utilities",
+      "icon": "icon.icns"
+    }
+  }
+}

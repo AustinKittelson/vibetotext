@@ -76,6 +76,16 @@ class AudioRecorder:
         """Start recording."""
         self._audio_data = []
         self.recording = True
+
+        # Log audio device info
+        try:
+            default_device = sd.query_devices(kind='input')
+            print(f"[AUDIO] Using input device: {default_device['name']}")
+            print(f"[AUDIO] Sample rate: {self.sample_rate}, Channels: 1")
+            print(f"[AUDIO] Device index: {sd.default.device[0]}, Max input channels: {default_device['max_input_channels']}")
+        except Exception as e:
+            print(f"[AUDIO] Could not query device info: {e}")
+
         self.stream = sd.InputStream(
             samplerate=self.sample_rate,
             channels=1,
@@ -91,11 +101,20 @@ class AudioRecorder:
         self.stream.close()
 
         if not self._audio_data:
+            print("[AUDIO] No audio data captured!")
             return np.array([], dtype=np.float32)
 
         # Concatenate all recorded chunks
-        audio = np.concatenate(self._audio_data, axis=0)
-        return audio.flatten()
+        audio = np.concatenate(self._audio_data, axis=0).flatten()
+
+        # Log audio stats
+        duration = len(audio) / self.sample_rate
+        max_amplitude = np.max(np.abs(audio)) if len(audio) > 0 else 0
+        rms = np.sqrt(np.mean(audio**2)) if len(audio) > 0 else 0
+        print(f"[AUDIO] Captured {duration:.2f}s, {len(audio)} samples")
+        print(f"[AUDIO] Max amplitude: {max_amplitude:.4f}, RMS: {rms:.6f}")
+
+        return audio
 
 
 class HotkeyListener:
