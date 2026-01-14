@@ -33,6 +33,7 @@ dist/
 # Project specific
 *.output
 launcher.c
+.env
 
 # Electron history app
 history-app/node_modules/

@@ -25,6 +25,9 @@ const STOPWORDS = new Set([
 // Track last data hash to avoid unnecessary re-renders
 let lastDataHash = '';
 
+// Current filter mode
+let currentMode = 'all';
+
 function loadHistory() {
   try {
     if (fs.existsSync(HISTORY_PATH)) {
@@ -83,13 +86,13 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-function render() {
+function render(forceRender = false) {
   const history = loadHistory();
-  const entries = history.entries || [];
+  const allEntries = history.entries || [];
 
   // Create a hash to check if data changed
-  const dataHash = JSON.stringify(entries);
-  if (dataHash === lastDataHash) {
+  const dataHash = JSON.stringify(allEntries) + currentMode;
+  if (!forceRender && dataHash === lastDataHash) {
     // Only update timestamps if data hasn't changed
     updateTimestamps();
     return;
@@ -97,9 +100,14 @@ function render() {
   lastDataHash = dataHash;
 
   // Sort by timestamp, newest first
-  entries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  allEntries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
-  // Calculate stats
+  // Filter entries based on current mode
+  const entries = currentMode === 'all'
+    ? allEntries
+    : allEntries.filter(e => (e.mode || 'transcribe') === currentMode);
+
+  // Calculate stats for filtered entries
   const totalSessions = entries.length;
   const totalWords = entries.reduce((sum, e) => sum + (e.word_count || e.text.split(/\s+/).length), 0);
 
@@ -112,8 +120,8 @@ function render() {
   const entriesWithDuration = entries.filter(e => e.duration_seconds);
   const totalDuration = entriesWithDuration.reduce((sum, e) => sum + e.duration_seconds, 0);
   const wordsWithDuration = entriesWithDuration.reduce((sum, e) => sum + (e.word_count || e.text.split(/\s+/).length), 0);
-  // Time it would take to type at 40 WPM
-  const typingWpm = 40;
+  // Time it would take to type at 100 WPM
+  const typingWpm = 100;
   const timeToTypeMinutes = wordsWithDuration / typingWpm;
   const timeDictatingMinutes = totalDuration / 60;
   const timeSavedMinutes = Math.max(0, timeToTypeMinutes - timeDictatingMinutes);
@@ -185,6 +193,19 @@ function updateTimestamps() {
     }
   });
 }
+
+// Tab click handlers
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    // Update active state
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+
+    // Update current mode and re-render
+    currentMode = tab.dataset.mode;
+    render(true);
+  });
+});
 
 // Initial render
 render();

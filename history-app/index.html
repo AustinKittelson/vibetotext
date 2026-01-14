@@ -13,7 +13,7 @@
       <div class="stats" id="stats">
         <span class="stat">
           <span class="stat-value" id="total-sessions">0</span>
-          <span class="stat-label">sessions</span>
+          <span class="stat-label">chats</span>
         </span>
         <span class="stat">
           <span class="stat-value" id="total-words">0</span>
@@ -29,6 +29,14 @@
         </span>
       </div>
     </header>
+
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-mode="all">All</button>
+      <button class="tab" data-mode="transcribe">Transcribe</button>
+      <button class="tab" data-mode="greppy">Greppy</button>
+      <button class="tab" data-mode="cleanup">Cleanup</button>
+      <button class="tab" data-mode="plan">Plan</button>
+    </div>
 
     <div class="common-words" id="common-words-section">
       <h3>Top Words</h3>

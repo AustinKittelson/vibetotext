@@ -92,6 +92,57 @@ body {
   color: var(--green);
 }
 
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 12px 20px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tab:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.tab.active {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.tab[data-mode="transcribe"].active {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.tab[data-mode="greppy"].active {
+  background: var(--purple-soft);
+  color: var(--purple);
+}
+
+.tab[data-mode="cleanup"].active {
+  background: var(--orange-soft);
+  color: var(--orange);
+}
+
+.tab[data-mode="plan"].active {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
 .common-words {
   padding: 16px 20px;
   background: var(--bg-secondary);

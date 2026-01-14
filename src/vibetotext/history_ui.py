@@ -184,7 +184,7 @@ class HistoryWindow(NSObject):
         content.append("                    STATISTICS")
         content.append("=" * 50)
         content.append("")
-        content.append(f"  Total Sessions:  {stats['total_sessions']}")
+        content.append(f"  Total Chats:     {stats['total_sessions']}")
         content.append(f"  Total Words:     {stats['total_words']}")
         content.append("")
 

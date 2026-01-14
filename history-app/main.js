@@ -12,6 +12,7 @@ const HISTORY_PATH = path.join(os.homedir(), '.vibetotext', 'history.json');
 let tray = null;
 let mainWindow = null;
 let watcher = null;
+let devWatcher = null;
 
 function createWindow() {
   // Get cursor position to show window near it
@@ -126,6 +127,29 @@ function setupFileWatcher() {
   });
 }
 
+function setupDevHotReload() {
+  // Watch UI source files for hot reload
+  const filesToWatch = [
+    path.join(__dirname, 'index.html'),
+    path.join(__dirname, 'styles.css'),
+    path.join(__dirname, 'renderer.js'),
+  ];
+
+  devWatcher = chokidar.watch(filesToWatch, {
+    persistent: true,
+    ignoreInitial: true,
+  });
+
+  devWatcher.on('change', (filePath) => {
+    console.log(`[HOT RELOAD] ${path.basename(filePath)} changed, reloading...`);
+    if (mainWindow) {
+      mainWindow.webContents.reloadIgnoringCache();
+    }
+  });
+
+  console.log('[HOT RELOAD] Watching UI files for changes');
+}
+
 // Single instance lock
 console.log('Requesting single instance lock...');
 const gotTheLock = app.requestSingleInstanceLock();
@@ -158,6 +182,9 @@ app.whenReady().then(() => {
   setupFileWatcher();
   console.log('File watcher set up');
 
+  // Hot reload for dev
+  setupDevHotReload();
+
   // Create and show window on startup
   console.log('Creating window...');
   createWindow();
@@ -180,5 +207,8 @@ app.on('activate', () => {
 app.on('before-quit', () => {
   if (watcher) {
     watcher.close();
+  }
+  if (devWatcher) {
+    devWatcher.close();
   }
 });

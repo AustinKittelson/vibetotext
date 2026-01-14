@@ -1,12 +1,25 @@
 """LLM integration for text cleanup and refinement."""
 
 import os
+from pathlib import Path
 import google.generativeai as genai
 from typing import Optional
 
+# Load .env file if it exists
+try:
+    from dotenv import load_dotenv
+    env_path = Path(__file__).parent.parent.parent / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+except ImportError:
+    pass
 
-# Configure Gemini
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+# Configure Gemini (try both common env var names)
+_api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+if _api_key:
+    genai.configure(api_key=_api_key)
+else:
+    print("[LLM] Warning: No GEMINI_API_KEY or GOOGLE_API_KEY set. Plan/cleanup modes will fail.")
 
 
 CLEANUP_PROMPT = """You are an expert prompt optimizer and thought clarifier. The user has recorded a rambling voice message and needs you to transform it into a clear, well-structured prompt or request.
@@ -30,104 +43,53 @@ User's rambling input:
 Refined output:"""
 
 
-IMPLEMENTATION_PLAN_PROMPT = """You are a senior software architect creating an implementation plan from a voice-recorded feature request. Transform the rambling description into a structured technical implementation plan.
+IMPLEMENTATION_PLAN_PROMPT = """You are a senior software architect. Transform a rambling voice description into a concise implementation plan.
 
-## Output Format
-
-Create a markdown document following this EXACT structure:
+## Output Format (keep it SHORT)
 
 ```markdown
-# [Feature Name] - Implementation Plan
+# [Feature Name]
 
-## Overview
+## Problem
+[1-2 sentences: what problem are we solving]
 
-[1-3 sentences describing what's being built and its purpose]
+## Solution
+[2-3 sentences: high-level approach]
 
 ---
 
-## Phase 1: [Phase Name]
+## Implementation
 
-### Objective
-[What this phase accomplishes]
-
-### Backend Changes
-
-**New/Modified Files:**
-- `path/to/file.py` - [description]
-
-**API Endpoints (if applicable):**
-- `POST /api/endpoint` - [description]
-  - Request body: [fields]
-  - Response: [fields]
-
-**Database/Storage Changes (if applicable):**
-```
-collection/
-  └── document structure
+### Step 1: [Name]
+**Files:** `path/to/file.py`
+```python
+# Key code snippet or interface
 ```
 
-### Frontend Changes
-
-**New/Modified Files:**
-- `path/to/component.tsx` - [description]
-
-**Component Structure (if applicable):**
-```tsx
-interface Props {{
-  // key props
-}}
+### Step 2: [Name]
+**Files:** `path/to/file.py`
+```python
+# Key code snippet
 ```
 
 ---
 
-## Phase 2: [Phase Name]
-[Continue pattern...]
-
----
-
-## File Summary
-
-### New Files
-```
-/path/to/new/file.py
-/path/to/new/component.tsx
-```
-
-### Modified Files
-```
-/path/to/existing/file.py
-```
-
----
-
-## Data Flow
-
-```
-Step 1
-  │
-  ▼
-Step 2
-  │
-  ▼
-Step 3
-```
+## Files Changed
+- `new/file.py` - [purpose]
+- `modified/file.py` - [what changes]
 ```
 
 ## Rules
+- **Be concise** - No fluff, no explanations, just the plan
+- **2-4 steps max** - Break into logical chunks
+- **Show key code** - Interfaces, function signatures, not full implementations
+- **No time estimates** - Never include "2-3 days" or timelines
+- **Real file paths** - Based on typical project structure
 
-1. **Extract the feature** - Identify the core feature being requested
-2. **Break into phases** - Logical implementation steps (typically 2-4 phases)
-3. **Be specific about files** - Use realistic file paths based on typical project structures
-4. **Include code snippets** - Show interfaces, schemas, key function signatures
-5. **No time estimates** - Never include timing like "2-3 days" or "later"
-6. **No fluff** - Skip explanations, just output the plan document
-7. **Use markdown formatting** - Headers, code blocks, tables, bullet points
-8. **Include data flow diagram** - ASCII diagram showing how data moves
-
-User's voice-recorded feature request:
+User's voice request:
 {text}
 
-Implementation Plan:"""
+Plan:"""
 
 
 def cleanup_text(text: str) -> Optional[str]:

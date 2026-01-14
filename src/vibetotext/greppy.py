@@ -1,5 +1,6 @@
 """Greppy semantic search integration."""
 
+import re
 import subprocess
 from typing import List, Tuple
 from pathlib import Path
@@ -7,6 +8,24 @@ from pathlib import Path
 
 # Default codebase path (will be configurable later)
 DEFAULT_CODEBASE = "/Users/dylan/Desktop/projects/datafeeds"
+
+# Try to import greppy directly (keeps model warm)
+_greppy_search = None
+_greppy_available = None  # None = not checked yet
+
+def _init_greppy():
+    """Initialize greppy import (lazy load to avoid import overhead at startup)."""
+    global _greppy_search, _greppy_available
+    if _greppy_available is None:
+        try:
+            from greppy import store as greppy_store
+            _greppy_search = greppy_store.search
+            _greppy_available = True
+            print("[GREPPY] Using direct import (model stays warm)")
+        except ImportError as e:
+            _greppy_available = False
+            print(f"[GREPPY] Direct import failed ({e}), falling back to subprocess")
+    return _greppy_available
 
 
 def search_files(query: str, limit: int = 10, codebase: str = None) -> List[Tuple[str, int]]:
@@ -24,6 +43,37 @@ def search_files(query: str, limit: int = 10, codebase: str = None) -> List[Tupl
     if codebase is None:
         codebase = DEFAULT_CODEBASE
 
+    # Try direct import first (keeps model warm)
+    if _init_greppy():
+        return _search_direct(query, limit, codebase)
+    else:
+        return _search_subprocess(query, limit, codebase)
+
+
+def _search_direct(query: str, limit: int, codebase: str) -> List[Tuple[str, int]]:
+    """Search using direct greppy import (faster, model stays warm)."""
+    try:
+        results = _greppy_search(Path(codebase), query, limit=limit)
+
+        files = []
+        seen_files = set()
+
+        for result in results:
+            filepath = result.get('file_path', '')
+            line_num = result.get('start_line', 1)
+
+            if filepath and filepath not in seen_files:
+                seen_files.add(filepath)
+                files.append((filepath, line_num))
+
+        return files[:limit]
+    except Exception as e:
+        print(f"[GREPPY] Direct search failed: {e}")
+        return []
+
+
+def _search_subprocess(query: str, limit: int, codebase: str) -> List[Tuple[str, int]]:
+    """Fallback: search using subprocess (slower, model reloads each time)."""
     try:
         result = subprocess.run(
             ["greppy", "search", "-n", str(limit), "-p", codebase, query],
@@ -38,30 +88,28 @@ def search_files(query: str, limit: int = 10, codebase: str = None) -> List[Tupl
         files = []
         seen_files = set()
 
-        for line in result.stdout.strip().split("\n"):
-            if not line:
-                continue
-            # Parse format: /path/to/file.py:123: content (score: -X.XX)
-            try:
-                # Split on first colon to get path, then second colon for line
-                parts = line.split(":")
-                if len(parts) >= 2:
-                    filepath = parts[0]
-                    line_num = int(parts[1]) if parts[1].isdigit() else 1
+        # Join all lines and split by score pattern (handles line wrapping)
+        output = result.stdout.replace('\n', '')
+        results = re.split(r'\(score: -?\d+\.\d+\)', output)
 
-                    # Deduplicate by file
-                    if filepath not in seen_files:
-                        seen_files.add(filepath)
-                        files.append((filepath, line_num))
-            except (ValueError, IndexError):
+        for result_text in results:
+            if not result_text.strip():
                 continue
+
+            match = re.search(r'(/[^:]+):(\d+):', result_text)
+            if match:
+                filepath = match.group(1)
+                line_num = int(match.group(2))
+
+                if filepath not in seen_files:
+                    seen_files.add(filepath)
+                    files.append((filepath, line_num))
 
         return files[:limit]
 
     except subprocess.TimeoutExpired:
         return []
     except FileNotFoundError:
-        # Greppy not installed
         return []
 
 
