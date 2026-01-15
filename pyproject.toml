@@ -9,7 +9,7 @@ description = "Voice-to-text with automatic code context injection"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
-    "openai-whisper",
+    "pywhispercpp",
     "sounddevice",
     "numpy",
     "pyperclip",

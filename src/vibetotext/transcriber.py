@@ -1,12 +1,11 @@
-"""Whisper transcription."""
+"""Whisper transcription using whisper.cpp for 2-4x faster inference."""
 
 import numpy as np
-from typing import Optional
-import whisper
+from pywhispercpp.model import Model
+import time
 
 
 # Technical vocabulary prompt to bias Whisper toward programming terms
-# This helps Whisper recognize domain-specific words correctly
 TECH_PROMPT = """This is a software engineer dictating code and technical documentation.
 They frequently discuss: APIs, databases, frontend frameworks, backend services,
 cloud infrastructure, and AI/ML systems. Use programming terminology and proper
@@ -39,7 +38,7 @@ regex, cron, UUID, Base64, SHA, MD5, RSA, AES, TLS, SSL, HTTPS."""
 
 
 class Transcriber:
-    """Transcribes audio using local Whisper model."""
+    """Transcribes audio using whisper.cpp (faster than Python Whisper)."""
 
     def __init__(self, model_name: str = "base"):
         """
@@ -57,8 +56,10 @@ class Transcriber:
     def model(self):
         """Lazy load the model."""
         if self._model is None:
-            print(f"Loading Whisper model '{self.model_name}'...")
-            self._model = whisper.load_model(self.model_name)
+            print(f"Loading whisper.cpp model '{self.model_name}'...")
+            start = time.time()
+            self._model = Model(self.model_name, print_progress=False)
+            print(f"Model loaded in {time.time() - start:.2f}s")
         return self._model
 
     def transcribe(self, audio: np.ndarray, sample_rate: int = 16000) -> str:
@@ -78,12 +79,19 @@ class Transcriber:
         # Whisper expects float32 audio normalized to [-1, 1]
         audio = audio.astype(np.float32)
 
-        # Transcribe with tech vocabulary prompt to improve recognition
-        result = self.model.transcribe(
+        start = time.time()
+
+        # Transcribe with whisper.cpp
+        # Note: pywhispercpp uses initial_prompt parameter for vocabulary hints
+        segments = self.model.transcribe(
             audio,
             language="en",
-            fp16=False,  # Use fp32 for CPU compatibility
-            initial_prompt=TECH_PROMPT,  # Bias toward programming terms
+            initial_prompt=TECH_PROMPT,
         )
 
-        return result["text"].strip()
+        # Combine all segments into one string
+        text = " ".join(segment.text for segment in segments).strip()
+
+        print(f"[WHISPER.CPP] Transcribed in {time.time() - start:.2f}s")
+
+        return text
