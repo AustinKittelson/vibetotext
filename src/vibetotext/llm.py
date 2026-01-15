@@ -102,6 +102,10 @@ def cleanup_text(text: str) -> Optional[str]:
     Returns:
         Cleaned up, refined text or None if failed
     """
+    if not _api_key:
+        print("Gemini cleanup error: No API key configured")
+        return None
+
     try:
         model = genai.GenerativeModel("gemini-3-flash-preview")
 
@@ -134,6 +138,10 @@ def generate_implementation_plan(text: str) -> Optional[str]:
     Returns:
         Structured markdown implementation plan or None if failed
     """
+    if not _api_key:
+        print("Gemini plan error: No API key configured")
+        return None
+
     try:
         model = genai.GenerativeModel("gemini-3-flash-preview")
 

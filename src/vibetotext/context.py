@@ -35,8 +35,9 @@ def search_context(query: str, limit: int = 5) -> List[dict]:
     project_root = get_project_root()
 
     try:
+        # Rust greppy: query first, then options, use --json for reliable parsing
         result = subprocess.run(
-            ["greppy", "search", query, "-n", str(limit), "-p", str(project_root)],
+            ["greppy", "search", query, "-n", str(limit), "-p", str(project_root), "--json"],
             capture_output=True,
             text=True,
             timeout=30,
@@ -45,24 +46,22 @@ def search_context(query: str, limit: int = 5) -> List[dict]:
         if result.returncode != 0:
             return []
 
-        # Parse greppy output
-        # Format: file_path:start_line-end_line (score: X.XX)
-        # followed by code content
+        # Parse JSON output (one object per line)
         snippets = []
-        lines = result.stdout.strip().split("\n")
+        for line in result.stdout.strip().split("\n"):
+            if not line.strip():
+                continue
+            try:
+                item = json.loads(line)
+                filepath = item.get("file_path", "")
+                start_line = item.get("start_line", 1)
+                end_line = item.get("end_line", start_line)
+                content = item.get("content", "")
 
-        current_snippet = None
-        for line in lines:
-            if line.startswith("/") or line.startswith("./"):
-                # New file match
-                if current_snippet:
-                    snippets.append(current_snippet)
-                current_snippet = {"header": line, "content": []}
-            elif current_snippet is not None:
-                current_snippet["content"].append(line)
-
-        if current_snippet:
-            snippets.append(current_snippet)
+                header = f"{filepath}:{start_line}-{end_line}"
+                snippets.append({"header": header, "content": content.split("\n")})
+            except json.JSONDecodeError:
+                continue
 
         return snippets
 
