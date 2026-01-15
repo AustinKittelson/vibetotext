@@ -87,6 +87,11 @@ function escapeHtml(text) {
 }
 
 function render(forceRender = false) {
+  // Skip render when in analytics mode - analytics.js handles that view
+  if (currentMode === 'analytics') {
+    return;
+  }
+
   const history = loadHistory();
   const allEntries = history.entries || [];
 
@@ -201,9 +206,36 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
 
-    // Update current mode and re-render
+    // Update current mode
     currentMode = tab.dataset.mode;
-    render(true);
+
+    // Handle analytics tab separately
+    const analyticsPanel = document.getElementById('analytics-panel');
+    const entriesContainer = document.getElementById('entries');
+    const commonWordsSection = document.getElementById('common-words-section');
+    const emptyState = document.getElementById('empty-state');
+
+    if (currentMode === 'analytics') {
+      // Show analytics, hide entries
+      analyticsPanel.style.display = 'block';
+      entriesContainer.style.display = 'none';
+      commonWordsSection.style.display = 'none';
+      emptyState.style.display = 'none';
+
+      // Render analytics charts
+      console.log('[Renderer] Analytics tab clicked, renderAnalytics available:', typeof renderAnalytics === 'function');
+      if (typeof renderAnalytics === 'function') {
+        const history = loadHistory();
+        console.log('[Renderer] Loaded history with', history.entries ? history.entries.length : 0, 'entries');
+        renderAnalytics(history.entries || []);
+      } else {
+        console.error('[Renderer] renderAnalytics function not found!');
+      }
+    } else {
+      // Hide analytics, show entries
+      analyticsPanel.style.display = 'none';
+      render(true);
+    }
   });
 });
 

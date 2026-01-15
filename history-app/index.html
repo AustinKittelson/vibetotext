@@ -36,6 +36,7 @@
       <button class="tab" data-mode="greppy">Greppy</button>
       <button class="tab" data-mode="cleanup">Cleanup</button>
       <button class="tab" data-mode="plan">Plan</button>
+      <button class="tab" data-mode="analytics">Analytics</button>
     </div>
 
     <div class="common-words" id="common-words-section">
@@ -54,8 +55,98 @@
       <p>No transcriptions yet</p>
       <p class="hint">ctrl+shift to record</p>
     </div>
+
+    <div class="analytics-panel" id="analytics-panel" style="display: none;">
+      <div class="chart-grid">
+        <!-- Streaks & Records -->
+        <div class="chart-card">
+          <h3>Streaks</h3>
+          <div id="streaks-card"></div>
+        </div>
+        <div class="chart-card">
+          <h3>Personal Records</h3>
+          <div id="records-card"></div>
+        </div>
+
+        <!-- Goals -->
+        <div class="chart-card full-width">
+          <h3>Daily Goal Progress</h3>
+          <div id="goals-card"></div>
+        </div>
+
+        <!-- Activity Heatmap -->
+        <div class="chart-card full-width">
+          <h3>Activity by Hour</h3>
+          <div id="activity-heatmap"></div>
+        </div>
+
+        <!-- Time Charts -->
+        <div class="chart-card">
+          <h3>Words Over Time</h3>
+          <div id="words-chart"></div>
+        </div>
+        <div class="chart-card">
+          <h3>Time Saved</h3>
+          <div id="time-saved-chart"></div>
+        </div>
+        <div class="chart-card">
+          <h3>Speaking Speed (WPM)</h3>
+          <div id="wpm-chart"></div>
+        </div>
+        <div class="chart-card">
+          <h3>Usage by Mode</h3>
+          <div id="mode-donut"></div>
+        </div>
+
+        <!-- Period Comparison -->
+        <div class="chart-card full-width">
+          <h3>This Week vs Last Week</h3>
+          <div id="period-comparison"></div>
+        </div>
+
+        <!-- Speech Patterns -->
+        <div class="chart-card">
+          <h3>Filler Words</h3>
+          <div id="filler-words"></div>
+        </div>
+        <div class="chart-card">
+          <h3>Vocabulary Diversity</h3>
+          <div id="vocabulary-diversity"></div>
+        </div>
+        <div class="chart-card full-width">
+          <h3>Common Phrases</h3>
+          <div id="common-phrases"></div>
+        </div>
+
+        <!-- WPM by Hour -->
+        <div class="chart-card full-width">
+          <h3>WPM by Hour of Day</h3>
+          <div id="wpm-by-hour"></div>
+        </div>
+
+        <!-- Session Length -->
+        <div class="chart-card full-width">
+          <h3>Session Length Distribution</h3>
+          <div id="session-histogram"></div>
+        </div>
+
+        <!-- Word Cloud -->
+        <div class="chart-card full-width">
+          <h3>Word Cloud</h3>
+          <div id="word-cloud"></div>
+        </div>
+
+        <!-- Sentiment -->
+        <div class="chart-card full-width">
+          <h3>Sentiment Over Time</h3>
+          <div id="sentiment-chart"></div>
+        </div>
+      </div>
+    </div>
   </div>
 
+  <script src="lib/d3.min.js"></script>
+  <script src="analytics.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

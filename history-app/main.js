@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, screen } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, screen, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const chokidar = require('chokidar');
@@ -37,6 +37,13 @@ function createWindow() {
   });
 
   mainWindow.loadFile('index.html');
+
+  // Open dev tools with keyboard shortcut
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.meta && input.alt && input.key === 'i') {
+      mainWindow.webContents.toggleDevTools();
+    }
+  });
 
   // Don't hide on blur - let user close manually
   // mainWindow.on('blur', () => {
@@ -133,6 +140,7 @@ function setupDevHotReload() {
     path.join(__dirname, 'index.html'),
     path.join(__dirname, 'styles.css'),
     path.join(__dirname, 'renderer.js'),
+    path.join(__dirname, 'analytics.js'),
   ];
 
   devWatcher = chokidar.watch(filesToWatch, {

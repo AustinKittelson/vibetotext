@@ -145,7 +145,7 @@ history-app/
 ## HTML Changes (index.html)
 
 ```html
-<!-- Add to .tabs div, after Greppy button -->
+<!-- Add to .tabs div, after Plan button (at the end) -->
 <button class="tab" data-mode="analytics">Analytics</button>
 
 <!-- Add after .entries div -->
