@@ -46,8 +46,8 @@ def main():
     )
     parser.add_argument(
         "--plan-hotkey",
-        default="cmd+alt",
-        help="Hotkey for implementation plan mode (default: cmd+alt)",
+        default="cmd+alt+p",
+        help="Hotkey for implementation plan mode (default: cmd+alt+p)",
     )
     parser.add_argument(
         "--codebase",
@@ -195,6 +195,11 @@ def main():
 
             if not text:
                 print("No speech detected.")
+                return
+
+            # Filter out Whisper blank audio markers
+            if text.strip().lower() in ("[blank_audio]", "[blank audio]", "[ blank_audio ]", "[ blank audio ]"):
+                print("No speech detected (blank audio).")
                 return
 
             print(f"Transcribed: {text}")
