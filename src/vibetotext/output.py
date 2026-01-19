@@ -4,9 +4,21 @@ import subprocess
 import time
 import os
 import platform
+import tempfile
 import pyperclip
 
 SYSTEM = platform.system()
+LOG_FILE = os.path.join(tempfile.gettempdir(), "vibetotext_output_debug.log")
+
+
+def log_debug(msg: str):
+    """Write debug message to log file."""
+    try:
+        with open(LOG_FILE, "a") as f:
+            f.write(f"{time.strftime('%H:%M:%S')} {msg}\n")
+        print(f"[DEBUG] {msg}")
+    except Exception:
+        print(f"[DEBUG] {msg}")
 
 
 def has_accessibility_permission():
@@ -14,10 +26,10 @@ def has_accessibility_permission():
     try:
         from ApplicationServices import AXIsProcessTrusted
         trusted = AXIsProcessTrusted()
-        print(f"[DEBUG] AXIsProcessTrusted() = {trusted}")
+        log_debug(f"AXIsProcessTrusted() = {trusted}")
         return trusted
     except ImportError as e:
-        print(f"[DEBUG] Failed to import ApplicationServices: {e}")
+        log_debug(f"Failed to import ApplicationServices: {e}")
         return False
 
 
@@ -33,10 +45,10 @@ def request_accessibility_permission():
             "AXTrustedCheckOptionPrompt"
         )
         trusted = AXIsProcessTrustedWithOptions(options)
-        print(f"[DEBUG] AXIsProcessTrustedWithOptions() = {trusted}")
+        log_debug(f"AXIsProcessTrustedWithOptions() = {trusted}")
         return trusted
     except Exception as e:
-        print(f"[DEBUG] Failed to request permission: {e}")
+        log_debug(f"Failed to request permission: {e}")
         return False
 
 
@@ -44,19 +56,19 @@ def get_running_app_info():
     """Get info about current process for debugging."""
     try:
         import sys
-        print(f"[DEBUG] Python executable: {sys.executable}")
-        print(f"[DEBUG] PID: {os.getpid()}")
-        print(f"[DEBUG] __file__: {__file__}")
+        log_debug(f"Python executable: {sys.executable}")
+        log_debug(f"PID: {os.getpid()}")
+        log_debug(f"__file__: {__file__}")
 
         # Get the actual app that needs permission
         from AppKit import NSRunningApplication, NSWorkspace
         current_app = NSRunningApplication.currentApplication()
-        print(f"[DEBUG] Bundle ID: {current_app.bundleIdentifier()}")
-        print(f"[DEBUG] Localized Name: {current_app.localizedName()}")
-        print(f"[DEBUG] Bundle URL: {current_app.bundleURL()}")
-        print(f"[DEBUG] Executable URL: {current_app.executableURL()}")
+        log_debug(f"Bundle ID: {current_app.bundleIdentifier()}")
+        log_debug(f"Localized Name: {current_app.localizedName()}")
+        log_debug(f"Bundle URL: {current_app.bundleURL()}")
+        log_debug(f"Executable URL: {current_app.executableURL()}")
     except Exception as e:
-        print(f"[DEBUG] Failed to get app info: {e}")
+        log_debug(f"Failed to get app info: {e}")
 
 
 def simulate_paste_windows():
@@ -64,7 +76,7 @@ def simulate_paste_windows():
     try:
         from pynput.keyboard import Controller, Key
 
-        print("[DEBUG] Using pynput to paste on Windows...")
+        log_debug(" Using pynput to paste on Windows...")
         keyboard = Controller()
 
         # Small delay to ensure any held keys are released
@@ -76,10 +88,10 @@ def simulate_paste_windows():
         keyboard.release('v')
         keyboard.release(Key.ctrl)
 
-        print("[DEBUG] pynput paste successful")
+        log_debug(" pynput paste successful")
         return True
     except Exception as e:
-        print(f"[DEBUG] pynput paste failed: {e}")
+        log_debug(f" pynput paste failed: {e}")
         return False
 
 
@@ -94,7 +106,7 @@ def simulate_paste_macos():
             kCGEventFlagMaskCommand,
         )
 
-        print("[DEBUG] Using CGEventPost to paste...")
+        log_debug(" Using CGEventPost to paste...")
 
         # Key code for 'v' is 9
         v_keycode = 9
@@ -111,10 +123,10 @@ def simulate_paste_macos():
         CGEventPost(kCGHIDEventTap, key_down)
         CGEventPost(kCGHIDEventTap, key_up)
 
-        print("[DEBUG] CGEventPost paste successful")
+        log_debug(" CGEventPost paste successful")
         return True
     except Exception as e:
-        print(f"[DEBUG] CGEventPost failed: {e}, falling back to AppleScript")
+        log_debug(f" CGEventPost failed: {e}, falling back to AppleScript")
         # Fallback to AppleScript
         try:
             result = subprocess.run(
@@ -125,7 +137,7 @@ def simulate_paste_macos():
             )
             return result.returncode == 0
         except Exception as e2:
-            print(f"[DEBUG] AppleScript fallback also failed: {e2}")
+            log_debug(f" AppleScript fallback also failed: {e2}")
             return False
 
 
@@ -166,18 +178,18 @@ def paste_at_cursor(text: str):
     """
     # Copy to clipboard first
     pyperclip.copy(text)
-    print(f"[DEBUG] Copied {len(text)} chars to clipboard")
+    log_debug(f" Copied {len(text)} chars to clipboard")
 
     if SYSTEM == 'Windows':
         # Windows doesn't need special permission checks
-        print("[DEBUG] Windows detected, attempting auto-paste...")
+        log_debug(" Windows detected, attempting auto-paste...")
         time.sleep(0.1)  # Wait for hotkey modifiers to be fully released
 
         if simulate_paste():
-            print("[DEBUG] Auto-paste successful")
+            log_debug(" Auto-paste successful")
             return
         else:
-            print("[DEBUG] Auto-paste failed, text is in clipboard")
+            log_debug(" Auto-paste failed, text is in clipboard")
             play_notification_sound()
 
     elif SYSTEM == 'Darwin':
@@ -187,31 +199,31 @@ def paste_at_cursor(text: str):
 
         # Check permission
         if has_accessibility_permission():
-            print("[DEBUG] Have accessibility permission, attempting auto-paste...")
+            log_debug(" Have accessibility permission, attempting auto-paste...")
             time.sleep(0.1)  # Wait for hotkey modifiers to be fully released
 
             if simulate_paste():
-                print("[DEBUG] Auto-paste attempted")
+                log_debug(" Auto-paste attempted")
                 return
             else:
-                print("[DEBUG] Auto-paste failed, falling back to sound")
+                log_debug(" Auto-paste failed, falling back to sound")
         else:
-            print("[DEBUG] No accessibility permission")
+            log_debug(" No accessibility permission")
             # Try to request it (shows system dialog)
             request_accessibility_permission()
 
         # Fallback: play sound to signal manual paste needed
-        print("[DEBUG] Playing sound for manual paste")
+        log_debug(" Playing sound for manual paste")
         play_notification_sound()
 
     else:
         # Linux or other - try pynput approach
-        print(f"[DEBUG] {SYSTEM} detected, attempting auto-paste...")
+        log_debug(f" {SYSTEM} detected, attempting auto-paste...")
         time.sleep(0.1)
 
         if simulate_paste():
-            print("[DEBUG] Auto-paste successful")
+            log_debug(" Auto-paste successful")
             return
         else:
-            print("[DEBUG] Auto-paste failed, text is in clipboard")
+            log_debug(" Auto-paste failed, text is in clipboard")
             play_notification_sound()
