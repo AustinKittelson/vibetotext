@@ -101,9 +101,46 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
+// Update header stats for a given mode
+function updateHeaderStats(mode) {
+  const history = loadHistory();
+  const allEntries = history.entries || [];
+
+  // Settings tabs (analytics, microphone, dictionary) show "all" stats
+  const settingsTabs = ['analytics', 'microphone', 'dictionary'];
+  const effectiveMode = settingsTabs.includes(mode) ? 'all' : mode;
+  const entries = effectiveMode === 'all'
+    ? allEntries
+    : allEntries.filter(e => (e.mode || 'transcribe') === effectiveMode);
+
+  // Calculate stats for filtered entries
+  const totalSessions = entries.length;
+  const totalWords = entries.reduce((sum, e) => sum + (e.word_count || e.text.split(/\s+/).length), 0);
+
+  // Calculate average WPM from entries that have it
+  const wpmEntries = entries.filter(e => e.wpm).map(e => e.wpm);
+  const avgWpm = wpmEntries.length > 0 ? Math.round(wpmEntries.reduce((a, b) => a + b, 0) / wpmEntries.length) : 0;
+
+  // Calculate time saved - only from entries that have duration data
+  const entriesWithDuration = entries.filter(e => e.duration_seconds);
+  const totalDuration = entriesWithDuration.reduce((sum, e) => sum + e.duration_seconds, 0);
+  const wordsWithDuration = entriesWithDuration.reduce((sum, e) => sum + (e.word_count || e.text.split(/\s+/).length), 0);
+  const typingWpm = 100;
+  const timeToTypeMinutes = wordsWithDuration / typingWpm;
+  const timeDictatingMinutes = totalDuration / 60;
+  const timeSavedMinutes = Math.max(0, timeToTypeMinutes - timeDictatingMinutes);
+
+  // Update stats (only text content, no DOM rebuild)
+  document.getElementById('total-sessions').textContent = totalSessions.toLocaleString();
+  document.getElementById('total-words').textContent = totalWords.toLocaleString();
+  document.getElementById('avg-wpm').textContent = avgWpm > 0 ? avgWpm : '--';
+  document.getElementById('time-saved').textContent = timeSavedMinutes.toFixed(1);
+}
+
 function render(forceRender = false) {
-  // Skip render when in analytics mode - analytics.js handles that view
-  if (currentMode === 'analytics') {
+  // Skip render when in special tabs - they handle their own views
+  const settingsTabs = ['analytics', 'microphone', 'dictionary'];
+  if (settingsTabs.includes(currentMode)) {
     return;
   }
 
@@ -127,30 +164,8 @@ function render(forceRender = false) {
     ? allEntries
     : allEntries.filter(e => (e.mode || 'transcribe') === currentMode);
 
-  // Calculate stats for filtered entries
-  const totalSessions = entries.length;
-  const totalWords = entries.reduce((sum, e) => sum + (e.word_count || e.text.split(/\s+/).length), 0);
-
-  // Calculate average WPM from entries that have it
-  const wpmEntries = entries.filter(e => e.wpm).map(e => e.wpm);
-  const avgWpm = wpmEntries.length > 0 ? Math.round(wpmEntries.reduce((a, b) => a + b, 0) / wpmEntries.length) : 0;
-
-  // Calculate time saved - only from entries that have duration data
-  // (entries before duration tracking was added don't count)
-  const entriesWithDuration = entries.filter(e => e.duration_seconds);
-  const totalDuration = entriesWithDuration.reduce((sum, e) => sum + e.duration_seconds, 0);
-  const wordsWithDuration = entriesWithDuration.reduce((sum, e) => sum + (e.word_count || e.text.split(/\s+/).length), 0);
-  // Time it would take to type at 100 WPM
-  const typingWpm = 100;
-  const timeToTypeMinutes = wordsWithDuration / typingWpm;
-  const timeDictatingMinutes = totalDuration / 60;
-  const timeSavedMinutes = Math.max(0, timeToTypeMinutes - timeDictatingMinutes);
-
-  // Update stats (only text content, no DOM rebuild)
-  document.getElementById('total-sessions').textContent = totalSessions.toLocaleString();
-  document.getElementById('total-words').textContent = totalWords.toLocaleString();
-  document.getElementById('avg-wpm').textContent = avgWpm > 0 ? avgWpm : '--';
-  document.getElementById('time-saved').textContent = timeSavedMinutes.toFixed(1);
+  // Update header stats
+  updateHeaderStats(currentMode);
 
   // Show/hide empty state
   const emptyState = document.getElementById('empty-state');
@@ -301,6 +316,73 @@ function handleMicChange(event) {
   }
 }
 
+// Dictionary panel functions
+function loadDictionary() {
+  const config = loadConfig();
+  return config.custom_dictionary || [];
+}
+
+function saveDictionary(words) {
+  const config = loadConfig();
+  config.custom_dictionary = words;
+  saveConfig(config);
+}
+
+function renderDictionaryWords() {
+  const wordsContainer = document.getElementById('dict-words');
+  const words = loadDictionary();
+
+  if (words.length === 0) {
+    wordsContainer.innerHTML = '<span class="dict-empty">No custom words added yet</span>';
+    return;
+  }
+
+  wordsContainer.innerHTML = words.map(word => `
+    <span class="dict-word">
+      ${escapeHtml(word)}
+      <button class="dict-word-remove" data-word="${escapeHtml(word)}">&times;</button>
+    </span>
+  `).join('');
+
+  // Add remove handlers
+  wordsContainer.querySelectorAll('.dict-word-remove').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const wordToRemove = btn.dataset.word;
+      const words = loadDictionary().filter(w => w !== wordToRemove);
+      saveDictionary(words);
+      renderDictionaryWords();
+      showDictStatus(`Removed "${wordToRemove}"`);
+    });
+  });
+}
+
+function addDictionaryWord() {
+  const input = document.getElementById('dict-input');
+  const word = input.value.trim();
+
+  if (!word) return;
+
+  const words = loadDictionary();
+  if (words.includes(word)) {
+    showDictStatus(`"${word}" is already in your dictionary`);
+    return;
+  }
+
+  words.push(word);
+  saveDictionary(words);
+  renderDictionaryWords();
+  input.value = '';
+  showDictStatus(`Added "${word}"`);
+}
+
+function showDictStatus(message) {
+  const status = document.getElementById('dict-status');
+  status.textContent = message;
+  setTimeout(() => {
+    status.textContent = '';
+  }, 3000);
+}
+
 // Tab click handlers
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -314,6 +396,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     // Handle special tabs
     const analyticsPanel = document.getElementById('analytics-panel');
     const microphonePanel = document.getElementById('microphone-panel');
+    const dictionaryPanel = document.getElementById('dictionary-panel');
     const entriesContainer = document.getElementById('entries');
     const commonWordsSection = document.getElementById('common-words-section');
     const emptyState = document.getElementById('empty-state');
@@ -321,6 +404,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     // Hide all special panels first
     analyticsPanel.style.display = 'none';
     microphonePanel.style.display = 'none';
+    dictionaryPanel.style.display = 'none';
 
     if (currentMode === 'analytics') {
       // Show analytics, hide entries
@@ -328,6 +412,9 @@ document.querySelectorAll('.tab').forEach(tab => {
       entriesContainer.style.display = 'none';
       commonWordsSection.style.display = 'none';
       emptyState.style.display = 'none';
+
+      // Update header stats (show "all" stats)
+      updateHeaderStats(currentMode);
 
       // Render analytics charts
       console.log('[Renderer] Analytics tab clicked, renderAnalytics available:', typeof renderAnalytics === 'function');
@@ -345,8 +432,23 @@ document.querySelectorAll('.tab').forEach(tab => {
       commonWordsSection.style.display = 'none';
       emptyState.style.display = 'none';
 
+      // Update header stats (show "all" stats)
+      updateHeaderStats(currentMode);
+
       // Load audio devices
       loadAudioDevices();
+    } else if (currentMode === 'dictionary') {
+      // Show dictionary panel, hide entries
+      dictionaryPanel.style.display = 'block';
+      entriesContainer.style.display = 'none';
+      commonWordsSection.style.display = 'none';
+      emptyState.style.display = 'none';
+
+      // Update header stats (show "all" stats)
+      updateHeaderStats(currentMode);
+
+      // Render dictionary words
+      renderDictionaryWords();
     } else {
       // Hide special panels, show entries
       render(true);
@@ -356,6 +458,14 @@ document.querySelectorAll('.tab').forEach(tab => {
 
 // Set up mic dropdown change handler
 document.getElementById('mic-select').addEventListener('change', handleMicChange);
+
+// Set up dictionary handlers
+document.getElementById('dict-add-btn').addEventListener('click', addDictionaryWord);
+document.getElementById('dict-input').addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') {
+    addDictionaryWord();
+  }
+});
 
 // Initial render
 render();

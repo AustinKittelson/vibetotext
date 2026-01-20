@@ -38,6 +38,7 @@
       <button class="tab" data-mode="plan">Plan</button>
       <button class="tab" data-mode="analytics">Analytics</button>
       <button class="tab" data-mode="microphone">Microphone</button>
+      <button class="tab" data-mode="dictionary">Dictionary</button>
     </div>
 
     <div class="common-words" id="common-words-section">
@@ -65,6 +66,21 @@
           <option value="">Loading devices...</option>
         </select>
         <p class="mic-status" id="mic-status"></p>
+      </div>
+    </div>
+
+    <div class="dictionary-panel" id="dictionary-panel" style="display: none;">
+      <div class="dict-settings">
+        <h3>Custom Dictionary</h3>
+        <p class="dict-description">Add words you use frequently to improve transcription accuracy. These words will be included in the Whisper prompt.</p>
+        <div class="dict-input-row">
+          <input type="text" id="dict-input" class="dict-input" placeholder="Enter a word or phrase...">
+          <button id="dict-add-btn" class="dict-add-btn">Add</button>
+        </div>
+        <div class="dict-words" id="dict-words">
+          <!-- Words will be populated by JavaScript -->
+        </div>
+        <p class="dict-status" id="dict-status"></p>
       </div>
     </div>
 

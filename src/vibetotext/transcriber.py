@@ -1,9 +1,12 @@
 """Whisper transcription using whisper.cpp for 2-4x faster inference."""
 
+import json
 import numpy as np
+from pathlib import Path
 from pywhispercpp.model import Model
 import time
 
+CONFIG_PATH = Path.home() / ".vibetotext" / "config.json"
 
 # Technical vocabulary prompt to bias Whisper toward programming terms
 TECH_PROMPT = """This is a software engineer dictating code and technical documentation.
@@ -40,7 +43,7 @@ regex, cron, UUID, Base64, SHA, MD5, RSA, AES, TLS, SSL, HTTPS."""
 class Transcriber:
     """Transcribes audio using whisper.cpp (faster than Python Whisper)."""
 
-    def __init__(self, model_name: str = "base"):
+    def __init__(self, model_name: str = "base", custom_words: list[str] | None = None):
         """
         Initialize transcriber.
 
@@ -48,9 +51,32 @@ class Transcriber:
             model_name: Whisper model size. Options: tiny, base, small, medium, large
                        Bigger = more accurate but slower.
                        'base' is a good balance for real-time use.
+            custom_words: Deprecated - custom words are now loaded from config on each transcription.
         """
         self.model_name = model_name
         self._model = None
+        self._last_custom_words = None
+
+    def _load_custom_words(self) -> list[str]:
+        """Load custom dictionary from config file."""
+        try:
+            if CONFIG_PATH.exists():
+                with open(CONFIG_PATH, "r") as f:
+                    config = json.load(f)
+                    return config.get("custom_dictionary", [])
+        except Exception:
+            pass
+        return []
+
+    def _build_prompt(self, custom_words: list[str]) -> str:
+        """Build the full vocabulary prompt including custom words."""
+        if not custom_words:
+            return TECH_PROMPT
+
+        # Format custom words with emphasis to help Whisper recognize them
+        words_list = ", ".join(custom_words)
+        custom_section = f"\n\nIMPORTANT: The speaker uses these specific terms that must be transcribed exactly as spelled: {words_list}. When you hear anything similar to these words, use the exact spelling provided: {words_list}."
+        return TECH_PROMPT + custom_section
 
     @property
     def model(self):
@@ -79,6 +105,15 @@ class Transcriber:
         # Whisper expects float32 audio normalized to [-1, 1]
         audio = audio.astype(np.float32)
 
+        # Reload custom words from config (hot reload support)
+        custom_words = self._load_custom_words()
+        if custom_words != self._last_custom_words:
+            self._last_custom_words = custom_words
+            if custom_words:
+                print(f"[WHISPER.CPP] Custom dictionary: {len(custom_words)} words ({', '.join(custom_words)})")
+
+        prompt = self._build_prompt(custom_words)
+
         start = time.time()
 
         # Transcribe with whisper.cpp
@@ -86,7 +121,7 @@ class Transcriber:
         segments = self.model.transcribe(
             audio,
             language="en",
-            initial_prompt=TECH_PROMPT,
+            initial_prompt=prompt,
         )
 
         # Combine all segments into one string

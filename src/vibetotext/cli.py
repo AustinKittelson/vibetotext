@@ -101,7 +101,7 @@ def main():
 
     # Initialize components
     recorder = AudioRecorder(device=saved_device)
-    transcriber = Transcriber(model_name=args.model)
+    transcriber = Transcriber(model_name=args.model)  # Custom dictionary is hot-reloaded from config
     history = TranscriptionHistory()
 
     # Log available audio devices
