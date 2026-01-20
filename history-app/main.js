@@ -1,5 +1,4 @@
 const { app, BrowserWindow, Tray, Menu, nativeImage, screen, globalShortcut } = require('electron');
-const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const chokidar = require('chokidar');
@@ -13,69 +12,6 @@ const HISTORY_PATH = path.join(os.homedir(), '.vibetotext', 'history.json');
 let tray = null;
 let mainWindow = null;
 let watcher = null;
-let devWatcher = null;
-let pythonProcess = null;
-
-// Get path to the Python engine binary
-function getPythonEnginePath() {
-  if (app.isPackaged) {
-    // In production: binary is in Resources folder
-    return path.join(process.resourcesPath, 'vibetotext-engine');
-  } else {
-    // In development: use the dist folder or run Python directly
-    const distPath = path.join(__dirname, '..', 'dist', 'vibetotext-engine');
-    if (fs.existsSync(distPath)) {
-      return distPath;
-    }
-    // Fallback: not built yet
-    return null;
-  }
-}
-
-// Start the Python voice-to-text engine
-function startPythonEngine() {
-  const enginePath = getPythonEnginePath();
-
-  if (!enginePath) {
-    console.log('[ENGINE] Python engine not found. Run "npm run build:python" first.');
-    console.log('[ENGINE] Or run Python directly: source .venv/bin/activate && python -m vibetotext');
-    return;
-  }
-
-  console.log(`[ENGINE] Starting Python engine: ${enginePath}`);
-
-  pythonProcess = spawn(enginePath, [], {
-    stdio: ['ignore', 'pipe', 'pipe'],
-    detached: false,
-  });
-
-  pythonProcess.stdout.on('data', (data) => {
-    console.log(`[ENGINE] ${data.toString().trim()}`);
-  });
-
-  pythonProcess.stderr.on('data', (data) => {
-    console.error(`[ENGINE ERROR] ${data.toString().trim()}`);
-  });
-
-  pythonProcess.on('close', (code) => {
-    console.log(`[ENGINE] Python engine exited with code ${code}`);
-    pythonProcess = null;
-  });
-
-  pythonProcess.on('error', (err) => {
-    console.error(`[ENGINE] Failed to start Python engine: ${err.message}`);
-    pythonProcess = null;
-  });
-}
-
-// Stop the Python engine
-function stopPythonEngine() {
-  if (pythonProcess) {
-    console.log('[ENGINE] Stopping Python engine...');
-    pythonProcess.kill('SIGTERM');
-    pythonProcess = null;
-  }
-}
 
 function createWindow() {
   // Get cursor position to show window near it
@@ -197,30 +133,6 @@ function setupFileWatcher() {
   });
 }
 
-function setupDevHotReload() {
-  // Watch UI source files for hot reload
-  const filesToWatch = [
-    path.join(__dirname, 'index.html'),
-    path.join(__dirname, 'styles.css'),
-    path.join(__dirname, 'renderer.js'),
-    path.join(__dirname, 'analytics.js'),
-  ];
-
-  devWatcher = chokidar.watch(filesToWatch, {
-    persistent: true,
-    ignoreInitial: true,
-  });
-
-  devWatcher.on('change', (filePath) => {
-    console.log(`[HOT RELOAD] ${path.basename(filePath)} changed, reloading...`);
-    if (mainWindow) {
-      mainWindow.webContents.reloadIgnoringCache();
-    }
-  });
-
-  console.log('[HOT RELOAD] Watching UI files for changes');
-}
-
 // Single instance lock
 console.log('Requesting single instance lock...');
 const gotTheLock = app.requestSingleInstanceLock();
@@ -240,15 +152,6 @@ if (!gotTheLock) {
 app.whenReady().then(() => {
   console.log('App is ready');
 
-  // Start the Python voice-to-text engine
-  console.log('Starting Python engine...');
-  startPythonEngine();
-
-  // Keep dock icon visible for now (easier to find)
-  // if (process.platform === 'darwin') {
-  //   app.dock.hide();
-  // }
-
   console.log('Creating tray...');
   createTray();
   console.log('Tray created');
@@ -256,9 +159,6 @@ app.whenReady().then(() => {
   console.log('Setting up file watcher...');
   setupFileWatcher();
   console.log('File watcher set up');
-
-  // Hot reload for dev
-  setupDevHotReload();
 
   // Create and show window on startup
   console.log('Creating window...');
@@ -280,13 +180,7 @@ app.on('activate', () => {
 });
 
 app.on('before-quit', () => {
-  // Stop the Python engine
-  stopPythonEngine();
-
   if (watcher) {
     watcher.close();
-  }
-  if (devWatcher) {
-    devWatcher.close();
   }
 });
