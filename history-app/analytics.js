@@ -21,6 +21,9 @@ const MODE_COLORS = {
   plan: CHART_COLORS.blue,
 };
 
+// Cache for re-rendering on tab switch/resize
+let cachedAnalyticsData = null;
+
 // Filler words to detect
 const FILLER_WORDS = ['um', 'uh', 'like', 'basically', 'actually', 'literally', 'honestly', 'anyway', 'so', 'right'];
 
@@ -322,6 +325,7 @@ function processData(entries) {
   return {
     activityMatrix,
     dailyArray,
+    dailyData,
     modeCounts,
     currentStreak,
     longestStreak,
@@ -349,9 +353,18 @@ function renderActivityHeatmap(containerId, activityMatrix) {
   const container = d3.select(containerId);
   container.html('');
 
-  const margin = { top: 20, right: 20, bottom: 30, left: 40 };
-  const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
-  const height = 140 - margin.top - margin.bottom;
+  const margin = { top: 5, right: 20, bottom: 25, left: 35 };
+
+  // Cap cell sizes for compact display
+  const maxCellWidth = 18;
+  const maxCellHeight = 14;
+  const cellGap = 2;
+
+  const cellWidth = maxCellWidth;
+  const cellHeight = maxCellHeight;
+
+  const width = (cellWidth + cellGap) * 24;
+  const height = (cellHeight + cellGap) * 7;
 
   if (width <= 0) return;
 
@@ -363,9 +376,6 @@ function renderActivityHeatmap(containerId, activityMatrix) {
 
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const hours = d3.range(24);
-
-  const cellWidth = width / 24;
-  const cellHeight = height / 7;
 
   // Find max value for color scale
   const maxVal = d3.max(activityMatrix.flat()) || 1;
@@ -379,10 +389,10 @@ function renderActivityHeatmap(containerId, activityMatrix) {
     hours.forEach(hour => {
       const value = activityMatrix[dayIndex][hour];
       svg.append('rect')
-        .attr('x', hour * cellWidth)
-        .attr('y', dayIndex * cellHeight)
-        .attr('width', cellWidth - 2)
-        .attr('height', cellHeight - 2)
+        .attr('x', hour * (cellWidth + cellGap))
+        .attr('y', dayIndex * (cellHeight + cellGap))
+        .attr('width', cellWidth)
+        .attr('height', cellHeight)
         .attr('rx', 2)
         .attr('fill', colorScale(value))
         .attr('stroke', CHART_COLORS.border)
@@ -400,7 +410,7 @@ function renderActivityHeatmap(containerId, activityMatrix) {
     .enter()
     .append('text')
     .attr('x', -5)
-    .attr('y', (d, i) => i * cellHeight + cellHeight / 2)
+    .attr('y', (d, i) => i * (cellHeight + cellGap) + cellHeight / 2)
     .attr('text-anchor', 'end')
     .attr('dominant-baseline', 'middle')
     .attr('fill', CHART_COLORS.muted)
@@ -412,12 +422,116 @@ function renderActivityHeatmap(containerId, activityMatrix) {
     .data([0, 6, 12, 18])
     .enter()
     .append('text')
-    .attr('x', d => d * cellWidth + cellWidth / 2)
+    .attr('x', d => d * (cellWidth + cellGap) + cellWidth / 2)
     .attr('y', height + 15)
     .attr('text-anchor', 'middle')
     .attr('fill', CHART_COLORS.muted)
     .attr('font-size', '9px')
     .text(d => `${d}:00`);
+}
+
+// Render yearly activity heatmap (GitHub-style contribution graph)
+function renderYearlyHeatmap(containerId, dailyData) {
+  const container = d3.select(containerId);
+  container.html('');
+
+  // Fixed cell size for compact display
+  const cellSize = 10;
+  const cellGap = 2;
+
+  // Generate the last 365 days
+  const today = new Date();
+  const oneYearAgo = new Date(today);
+  oneYearAgo.setFullYear(today.getFullYear() - 1);
+
+  const days = [];
+  const currentDate = new Date(oneYearAgo);
+  while (currentDate <= today) {
+    days.push(new Date(currentDate));
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+
+  // Calculate dimensions based on fixed cell size
+  const numWeeks = Math.ceil(days.length / 7) + 1;
+  const margin = { top: 15, right: 10, bottom: 5, left: 20 };
+  const width = numWeeks * (cellSize + cellGap);
+  const height = 7 * (cellSize + cellGap);
+
+  const svg = container.append('svg')
+    .attr('width', width + margin.left + margin.right)
+    .attr('height', height + margin.top + margin.bottom)
+    .append('g')
+    .attr('transform', `translate(${margin.left},${margin.top})`);
+
+  // Find max activity for color scale
+  const maxActivity = Math.max(1, ...Object.values(dailyData).map(d => d.entries || 0));
+
+  const colorScale = d3.scaleLinear()
+    .domain([0, maxActivity])
+    .range([CHART_COLORS.bg, CHART_COLORS.accent]);
+
+  // Get the day of week for the first day (0 = Sunday)
+  const startDayOfWeek = days[0].getDay();
+
+  // Draw cells
+  days.forEach((date, i) => {
+    const dateKey = date.toISOString().split('T')[0];
+    const dayData = dailyData[dateKey];
+    const value = dayData ? dayData.entries : 0;
+
+    // Calculate position: week (column) and day of week (row)
+    const dayOfWeek = date.getDay();
+    const weekIndex = Math.floor((i + startDayOfWeek) / 7);
+
+    svg.append('rect')
+      .attr('x', weekIndex * (cellSize + cellGap))
+      .attr('y', dayOfWeek * (cellSize + cellGap))
+      .attr('width', cellSize)
+      .attr('height', cellSize)
+      .attr('rx', 2)
+      .attr('fill', value > 0 ? colorScale(value) : CHART_COLORS.bg)
+      .attr('stroke', CHART_COLORS.border)
+      .attr('stroke-width', 0.5)
+      .on('mouseover', (event) => {
+        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const sessions = value === 1 ? '1 session' : `${value} sessions`;
+        showTooltip(event, `${dateStr} - ${sessions}`);
+      })
+      .on('mouseout', hideTooltip);
+  });
+
+  // Month labels
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  let lastMonth = -1;
+  days.forEach((date, i) => {
+    const month = date.getMonth();
+    if (month !== lastMonth && date.getDate() <= 7) {
+      const weekIndex = Math.floor((i + startDayOfWeek) / 7);
+      svg.append('text')
+        .attr('x', weekIndex * (cellSize + cellGap))
+        .attr('y', -5)
+        .attr('text-anchor', 'start')
+        .attr('fill', CHART_COLORS.muted)
+        .attr('font-size', '9px')
+        .text(months[month]);
+      lastMonth = month;
+    }
+  });
+
+  // Day labels (Mon, Wed, Fri)
+  const dayLabels = ['', 'M', '', 'W', '', 'F', ''];
+  dayLabels.forEach((label, i) => {
+    if (label) {
+      svg.append('text')
+        .attr('x', -5)
+        .attr('y', i * (cellSize + cellGap) + cellSize / 2)
+        .attr('text-anchor', 'end')
+        .attr('dominant-baseline', 'middle')
+        .attr('fill', CHART_COLORS.muted)
+        .attr('font-size', '9px')
+        .text(label);
+    }
+  });
 }
 
 // Render words over time area chart
@@ -1237,7 +1351,7 @@ function renderAnalytics(entries) {
 
   const allContainers = [
     '#streaks-card', '#records-card', '#goals-card', '#activity-heatmap',
-    '#words-chart', '#time-saved-chart', '#wpm-chart', '#mode-donut',
+    '#activity-yearly', '#words-chart', '#time-saved-chart', '#wpm-chart', '#mode-donut',
     '#period-comparison', '#filler-words', '#vocabulary-diversity',
     '#common-phrases', '#wpm-by-hour', '#session-histogram',
     '#word-cloud', '#sentiment-chart'
@@ -1251,14 +1365,21 @@ function renderAnalytics(entries) {
   }
 
   const data = processData(entries);
+  cachedAnalyticsData = data;
 
   // Productivity & Gamification
   renderStreaks('#streaks-card', data.currentStreak, data.longestStreak);
   renderRecords('#records-card', data.maxWpm, data.maxWordsInDay, data.longestSession);
   renderGoals('#goals-card', data.todayData, data.thisWeekWords);
 
-  // Original charts
+  // Original charts - only render the visible heatmap
+  const yearlyTab = document.querySelector('.activity-tab[data-view="yearly"]');
+  const isYearlyActive = yearlyTab && yearlyTab.classList.contains('active');
+
   renderActivityHeatmap('#activity-heatmap', data.activityMatrix);
+  if (isYearlyActive) {
+    renderYearlyHeatmap('#activity-yearly', data.dailyData);
+  }
   renderWordsChart('#words-chart', data.dailyArray);
   renderTimeSavedChart('#time-saved-chart', data.dailyArray);
   renderWpmChart('#wpm-chart', data.dailyArray);
@@ -1281,18 +1402,53 @@ function renderAnalytics(entries) {
   renderSentimentChart('#sentiment-chart', data.sentimentArray);
 }
 
-// Handle window resize
+// Handle window resize - use cached data for faster re-render
 let resizeTimeout;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimeout);
   resizeTimeout = setTimeout(() => {
     const analyticsPanel = document.getElementById('analytics-panel');
-    if (analyticsPanel && analyticsPanel.style.display !== 'none') {
-      // Re-render if analytics is visible
-      if (typeof loadHistory === 'function') {
-        const history = loadHistory();
-        renderAnalytics(history.entries || []);
-      }
+    if (analyticsPanel && analyticsPanel.style.display !== 'none' && cachedAnalyticsData) {
+      // Re-render responsive charts (heatmaps are fixed size, no need to re-render)
+      renderWordsChart('#words-chart', cachedAnalyticsData.dailyArray);
+      renderTimeSavedChart('#time-saved-chart', cachedAnalyticsData.dailyArray);
+      renderWpmChart('#wpm-chart', cachedAnalyticsData.dailyArray);
+      renderModeDonut('#mode-donut', cachedAnalyticsData.modeCounts);
+      renderWpmByHour('#wpm-by-hour', cachedAnalyticsData.avgWpmByHour);
+      renderSessionHistogram('#session-histogram', cachedAnalyticsData.sessionDurations);
+      renderWordCloud('#word-cloud', cachedAnalyticsData.wordFrequency);
+      renderSentimentChart('#sentiment-chart', cachedAnalyticsData.sentimentArray);
     }
-  }, 250);
+  }, 100);
+});
+
+// Activity heatmap tab switching
+document.addEventListener('DOMContentLoaded', () => {
+  const tabs = document.querySelectorAll('.activity-tab');
+  const hourlyView = document.getElementById('activity-heatmap');
+  const yearlyView = document.getElementById('activity-yearly');
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      // Update active tab
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+
+      // Switch view and re-render
+      const view = tab.dataset.view;
+      if (view === 'hourly') {
+        hourlyView.style.display = 'block';
+        yearlyView.style.display = 'none';
+        if (cachedAnalyticsData) {
+          renderActivityHeatmap('#activity-heatmap', cachedAnalyticsData.activityMatrix);
+        }
+      } else {
+        hourlyView.style.display = 'none';
+        yearlyView.style.display = 'block';
+        if (cachedAnalyticsData) {
+          renderYearlyHeatmap('#activity-yearly', cachedAnalyticsData.dailyData);
+        }
+      }
+    });
+  });
 });

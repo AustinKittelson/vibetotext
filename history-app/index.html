@@ -104,8 +104,15 @@
 
         <!-- Activity Heatmap -->
         <div class="chart-card full-width">
-          <h3>Activity by Hour</h3>
+          <div class="activity-header">
+            <h3>Activity</h3>
+            <div class="activity-tabs">
+              <button class="activity-tab active" data-view="hourly">Hourly</button>
+              <button class="activity-tab" data-view="yearly">Yearly</button>
+            </div>
+          </div>
           <div id="activity-heatmap"></div>
+          <div id="activity-yearly" style="display: none;"></div>
         </div>
 
         <!-- Time Charts -->
