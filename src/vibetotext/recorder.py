@@ -35,60 +35,58 @@ class AudioRecorder:
         self.on_level = None  # Callback for audio level updates
 
     def _callback(self, indata, frames, time, status):
-        """Callback for sounddevice stream."""
-        if self.recording:
-            self._audio_data.append(indata.copy())
+        """Callback for sounddevice stream.
 
-            # Debug: always write to file to confirm callback runs
-            if not hasattr(self, '_cb_count'):
-                self._cb_count = 0
-                self._debug_file = os.path.join(tempfile.gettempdir(), 'vibetotext_callback_debug.txt')
-            self._cb_count += 1
-            if self._cb_count <= 3:
-                with open(self._debug_file, 'a') as f:
-                    f.write(f"Callback #{self._cb_count}, on_level={self.on_level is not None}\n")
+        IMPORTANT: This runs on a real-time audio thread.
+        Must NOT do any blocking I/O (file writes, etc.) to avoid deadlock
+        when stream.stop() waits for this callback to complete.
+        """
+        if not self.recording:
+            return  # Exit early if not recording (helps with clean shutdown)
 
-            # Calculate waveform visualization based on audio amplitude
-            if self.on_level:
-                audio = indata.flatten()
+        self._audio_data.append(indata.copy())
 
-                # Get RMS (overall volume)
-                rms = np.sqrt(np.mean(audio**2))
+        # Calculate waveform visualization based on audio amplitude
+        if self.on_level:
+            audio = indata.flatten()
 
-                # Scale RMS: 0.001 (quiet) → 0.1, 0.005 (normal) → 0.5, 0.01 (loud) → 1.0
-                base_level = min(1.0, rms * 100)
+            # Get RMS (overall volume)
+            rms = np.sqrt(np.mean(audio**2))
 
-                # Threshold: if base level is very low, treat as silence
-                # Increased threshold to handle background noise
-                if base_level < 0.1:
-                    self.on_level([0.0] * 25)
-                    return
+            # Scale RMS: 0.001 (quiet) → 0.1, 0.005 (normal) → 0.5, 0.01 (loud) → 1.0
+            base_level = min(1.0, rms * 100)
 
-                # Create 25 bars with variation based on audio samples
-                num_bars = 25
-                levels = []
+            # Threshold: if base level is very low, treat as silence
+            # Increased threshold to handle background noise
+            if base_level < 0.1:
+                self.on_level([0.0] * 25)
+                return
 
-                # Use actual audio samples to create variation across bars
-                if len(audio) >= num_bars:
-                    step = len(audio) // num_bars
-                    for i in range(num_bars):
-                        sample = abs(audio[i * step])
-                        # Combine base level with sample variation
-                        level = min(1.0, (base_level * 0.7) + (sample * 50))
-                        # Floor small values to zero
-                        if level < 0.05:
-                            level = 0.0
-                        levels.append(level)
-                else:
-                    # Fallback: use base level with random variation
-                    for i in range(num_bars):
-                        variation = np.random.uniform(0.7, 1.3)
-                        level = min(1.0, base_level * variation)
-                        if level < 0.05:
-                            level = 0.0
-                        levels.append(level)
+            # Create 25 bars with variation based on audio samples
+            num_bars = 25
+            levels = []
 
-                self.on_level(levels)
+            # Use actual audio samples to create variation across bars
+            if len(audio) >= num_bars:
+                step = len(audio) // num_bars
+                for i in range(num_bars):
+                    sample = abs(audio[i * step])
+                    # Combine base level with sample variation
+                    level = min(1.0, (base_level * 0.7) + (sample * 50))
+                    # Floor small values to zero
+                    if level < 0.05:
+                        level = 0.0
+                    levels.append(level)
+            else:
+                # Fallback: use base level with random variation
+                for i in range(num_bars):
+                    variation = np.random.uniform(0.7, 1.3)
+                    level = min(1.0, base_level * variation)
+                    if level < 0.05:
+                        level = 0.0
+                    levels.append(level)
+
+            self.on_level(levels)
 
     def start(self):
         """Start recording."""

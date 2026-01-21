@@ -44,6 +44,36 @@ const NEGATIVE_WORDS = new Set([
 const DAILY_WORD_GOAL = 500;
 const WEEKLY_WORD_GOAL = 2500;
 
+// Common English words (top ~500) - words NOT in this list are considered "rare"
+const COMMON_WORDS = new Set([
+  'the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'i', 'it', 'for', 'not', 'on', 'with', 'he', 'as', 'you', 'do', 'at',
+  'this', 'but', 'his', 'by', 'from', 'they', 'we', 'say', 'her', 'she', 'or', 'an', 'will', 'my', 'one', 'all', 'would', 'there', 'their', 'what',
+  'so', 'up', 'out', 'if', 'about', 'who', 'get', 'which', 'go', 'me', 'when', 'make', 'can', 'like', 'time', 'no', 'just', 'him', 'know', 'take',
+  'people', 'into', 'year', 'your', 'good', 'some', 'could', 'them', 'see', 'other', 'than', 'then', 'now', 'look', 'only', 'come', 'its', 'over', 'think', 'also',
+  'back', 'after', 'use', 'two', 'how', 'our', 'work', 'first', 'well', 'way', 'even', 'new', 'want', 'because', 'any', 'these', 'give', 'day', 'most', 'us',
+  'is', 'are', 'was', 'were', 'been', 'being', 'has', 'had', 'did', 'does', 'done', 'doing', 'made', 'got', 'went', 'going', 'came', 'coming', 'took', 'taking',
+  'said', 'saying', 'put', 'thing', 'things', 'very', 'much', 'more', 'many', 'still', 'such', 'here', 'those', 'own', 'same', 'right', 'too', 'old', 'before',
+  'last', 'never', 'where', 'why', 'while', 'should', 'must', 'may', 'might', 'let', 'through', 'down', 'off', 'between', 'under', 'long', 'little', 'great', 'need',
+  'each', 'every', 'both', 'few', 'might', 'shall', 'part', 'place', 'since', 'around', 'hand', 'high', 'always', 'sure', 'something', 'help', 'keep', 'seem',
+  'call', 'point', 'start', 'find', 'show', 'turn', 'end', 'ask', 'try', 'tell', 'feel', 'become', 'leave', 'mean', 'change', 'move', 'play', 'run', 'set', 'big',
+  'small', 'large', 'another', 'different', 'kind', 'again', 'home', 'world', 'house', 'life', 'school', 'night', 'city', 'head', 'side', 'water', 'room', 'mother',
+  'area', 'money', 'story', 'fact', 'month', 'lot', 'study', 'book', 'eye', 'job', 'word', 'business', 'issue', 'government', 'company', 'number', 'group', 'problem',
+  'state', 'system', 'program', 'question', 'during', 'without', 'children', 'against', 'family', 'case', 'woman', 'service', 'country', 'however', 'information',
+  'really', 'actually', 'probably', 'maybe', 'perhaps', 'okay', 'yeah', 'yes', 'no', 'oh', 'well', 'just', 'like', 'know', 'think', 'gonna', 'wanna', 'gotta',
+  'code', 'function', 'file', 'data', 'type', 'class', 'method', 'value', 'name', 'string', 'array', 'object', 'error', 'test', 'build', 'run', 'create', 'add',
+  'update', 'delete', 'check', 'fix', 'change', 'move', 'copy', 'save', 'load', 'open', 'close', 'read', 'write', 'send', 'receive', 'input', 'output', 'return'
+]);
+
+// Helper: count syllables in a word (approximation)
+function countSyllables(word) {
+  word = word.toLowerCase();
+  if (word.length <= 3) return 1;
+  word = word.replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, '');
+  word = word.replace(/^y/, '');
+  const matches = word.match(/[aeiouy]{1,2}/g);
+  return matches ? matches.length : 1;
+}
+
 // Tooltip helper
 let tooltip = null;
 
@@ -281,6 +311,78 @@ function processData(entries) {
   const uniqueWords = new Set(allWords.filter(w => w.length > 2));
   const totalWords = allWords.length;
 
+  // Define week boundaries early (needed for new words calculation)
+  const now = new Date();
+  const startOfThisWeek = new Date(now);
+  startOfThisWeek.setDate(now.getDate() - now.getDay());
+  startOfThisWeek.setHours(0, 0, 0, 0);
+
+  // New words this week - words used this week not used before this week
+  const wordsBeforeThisWeek = new Set();
+  const wordsThisWeek = new Set();
+  entries.forEach(entry => {
+    const entryDate = new Date(entry.timestamp);
+    const text = entry.text || '';
+    const words = text.toLowerCase().replace(/[.,!?;:'"()\[\]{}]/g, '').split(/\s+/).filter(w => w.length > 2);
+    if (entryDate < startOfThisWeek) {
+      words.forEach(w => wordsBeforeThisWeek.add(w));
+    } else {
+      words.forEach(w => wordsThisWeek.add(w));
+    }
+  });
+  const newWordsThisWeek = [...wordsThisWeek].filter(w => !wordsBeforeThisWeek.has(w));
+
+  // Vocabulary growth by day (cumulative unique words)
+  const sortedEntries = [...entries].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  const cumulativeVocab = new Set();
+  const vocabGrowthByDay = {};
+  sortedEntries.forEach(entry => {
+    const dateKey = new Date(entry.timestamp).toISOString().split('T')[0];
+    const text = entry.text || '';
+    const words = text.toLowerCase().replace(/[.,!?;:'"()\[\]{}]/g, '').split(/\s+/).filter(w => w.length > 2);
+    words.forEach(w => cumulativeVocab.add(w));
+    vocabGrowthByDay[dateKey] = cumulativeVocab.size;
+  });
+  const vocabGrowthArray = Object.entries(vocabGrowthByDay).map(([date, count]) => ({ date, count })).sort((a, b) => a.date.localeCompare(b.date));
+
+  // Rare words (not in common words list)
+  const rareWordCounts = {};
+  allWords.forEach(word => {
+    if (word.length > 3 && !COMMON_WORDS.has(word)) {
+      rareWordCounts[word] = (rareWordCounts[word] || 0) + 1;
+    }
+  });
+  const rareWords = Object.entries(rareWordCounts)
+    .filter(([word, count]) => count >= 2) // Used at least twice
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 20);
+
+  // Reading level (Flesch-Kincaid)
+  let totalSentences = 0;
+  let totalSyllables = 0;
+  entries.forEach(entry => {
+    const text = entry.text || '';
+    // Count sentences (rough approximation)
+    const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0).length;
+    totalSentences += Math.max(1, sentences);
+    // Count syllables
+    const words = text.toLowerCase().replace(/[.,!?;:'"()\[\]{}]/g, '').split(/\s+/).filter(w => w.length > 0);
+    words.forEach(word => {
+      totalSyllables += countSyllables(word);
+    });
+  });
+  const avgWordsPerSentence = totalSentences > 0 ? totalWords / totalSentences : 0;
+  const avgSyllablesPerWord = totalWords > 0 ? totalSyllables / totalWords : 0;
+  const fleschKincaid = totalWords > 0 ? Math.max(1, Math.min(18, 0.39 * avgWordsPerSentence + 11.8 * avgSyllablesPerWord - 15.59)) : 0;
+
+  // Word length distribution
+  const wordLengthDist = { short: 0, medium: 0, long: 0 };
+  allWords.forEach(word => {
+    if (word.length <= 3) wordLengthDist.short++;
+    else if (word.length <= 6) wordLengthDist.medium++;
+    else wordLengthDist.long++;
+  });
+
   // Sentiment array for charting
   const sentimentArray = Object.entries(sentimentByDay)
     .map(([date, data]) => ({
@@ -291,12 +393,7 @@ function processData(entries) {
     }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  // Week comparison
-  const now = new Date();
-  const startOfThisWeek = new Date(now);
-  startOfThisWeek.setDate(now.getDate() - now.getDay());
-  startOfThisWeek.setHours(0, 0, 0, 0);
-
+  // Week comparison (startOfThisWeek already defined above)
   const startOfLastWeek = new Date(startOfThisWeek);
   startOfLastWeek.setDate(startOfLastWeek.getDate() - 7);
 
@@ -345,6 +442,11 @@ function processData(entries) {
     todayData,
     thisWeekWords,
     wordFrequency,
+    newWordsThisWeek,
+    vocabGrowthArray,
+    rareWords,
+    readingLevel: fleschKincaid,
+    wordLengthDist,
   };
 }
 
@@ -938,6 +1040,157 @@ function renderGoals(containerId, todayData, thisWeekWords) {
     .style('width', `${weeklyPct}%`);
 }
 
+// Render sessions today as a radial gauge
+function renderSessionsToday(containerId, todayData) {
+  const container = d3.select(containerId);
+  container.html('');
+
+  const sessions = todayData.entries || 0;
+  const targetSessions = 10; // Target sessions per day
+  const percentage = Math.min(100, (sessions / targetSessions) * 100);
+
+  const width = 180;
+  const height = 140;
+  const thickness = 12;
+  const radius = Math.min(width, height) / 2 - thickness;
+
+  const svg = container.append('svg')
+    .attr('width', width)
+    .attr('height', height)
+    .append('g')
+    .attr('transform', `translate(${width / 2},${height / 2 + 10})`);
+
+  // Background arc
+  const arc = d3.arc()
+    .innerRadius(radius - thickness)
+    .outerRadius(radius)
+    .startAngle(-Math.PI * 0.75)
+    .endAngle(Math.PI * 0.75);
+
+  svg.append('path')
+    .attr('d', arc)
+    .attr('fill', CHART_COLORS.bg);
+
+  // Foreground arc (progress)
+  const progressAngle = -Math.PI * 0.75 + (percentage / 100) * Math.PI * 1.5;
+  const progressArc = d3.arc()
+    .innerRadius(radius - thickness)
+    .outerRadius(radius)
+    .startAngle(-Math.PI * 0.75)
+    .endAngle(progressAngle);
+
+  svg.append('path')
+    .attr('d', progressArc)
+    .attr('fill', percentage >= 100 ? CHART_COLORS.green : CHART_COLORS.accent);
+
+  // Center text
+  svg.append('text')
+    .attr('text-anchor', 'middle')
+    .attr('dominant-baseline', 'middle')
+    .attr('y', -10)
+    .attr('fill', CHART_COLORS.accent)
+    .attr('font-size', '32px')
+    .attr('font-weight', '600')
+    .text(sessions);
+
+  svg.append('text')
+    .attr('text-anchor', 'middle')
+    .attr('dominant-baseline', 'middle')
+    .attr('y', 18)
+    .attr('fill', CHART_COLORS.muted)
+    .attr('font-size', '11px')
+    .text('sessions');
+
+  // Duration info below
+  const duration = todayData.duration || 0;
+  const minutes = Math.floor(duration / 60);
+  svg.append('text')
+    .attr('text-anchor', 'middle')
+    .attr('y', 50)
+    .attr('fill', CHART_COLORS.muted)
+    .attr('font-size', '10px')
+    .text(`${minutes}m recorded today`);
+}
+
+// Render peak hours bar chart
+function renderPeakHours(containerId, activityMatrix) {
+  const container = d3.select(containerId);
+  container.html('');
+
+  // Sum activity across all days for each hour
+  const hourlyTotals = Array(24).fill(0);
+  activityMatrix.forEach(dayRow => {
+    dayRow.forEach((count, hour) => {
+      hourlyTotals[hour] += count;
+    });
+  });
+
+  const maxVal = Math.max(...hourlyTotals) || 1;
+
+  const margin = { top: 10, right: 10, bottom: 25, left: 30 };
+  const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
+  const height = 130 - margin.top - margin.bottom;
+
+  if (width <= 0) return;
+
+  const svg = container.append('svg')
+    .attr('width', width + margin.left + margin.right)
+    .attr('height', height + margin.top + margin.bottom)
+    .append('g')
+    .attr('transform', `translate(${margin.left},${margin.top})`);
+
+  const barWidth = Math.max(2, (width / 24) - 2);
+  const barGap = (width - barWidth * 24) / 23;
+
+  // Draw bars
+  hourlyTotals.forEach((count, hour) => {
+    const barHeight = (count / maxVal) * height;
+    const x = hour * (barWidth + barGap);
+
+    svg.append('rect')
+      .attr('x', x)
+      .attr('y', height - barHeight)
+      .attr('width', barWidth)
+      .attr('height', barHeight)
+      .attr('rx', 2)
+      .attr('fill', CHART_COLORS.accent)
+      .attr('opacity', 0.3 + (count / maxVal) * 0.7)
+      .on('mouseover', (event) => {
+        showTooltip(event, `${hour}:00 - ${count} sessions`);
+      })
+      .on('mouseout', hideTooltip);
+  });
+
+  // X axis labels (every 6 hours)
+  [0, 6, 12, 18].forEach(hour => {
+    const x = hour * (barWidth + barGap) + barWidth / 2;
+    svg.append('text')
+      .attr('x', x)
+      .attr('y', height + 15)
+      .attr('text-anchor', 'middle')
+      .attr('fill', CHART_COLORS.muted)
+      .attr('font-size', '9px')
+      .text(`${hour}:00`);
+  });
+
+  // Y axis
+  svg.append('text')
+    .attr('x', -5)
+    .attr('y', 5)
+    .attr('text-anchor', 'end')
+    .attr('fill', CHART_COLORS.muted)
+    .attr('font-size', '9px')
+    .text(maxVal);
+
+  svg.append('text')
+    .attr('x', -5)
+    .attr('y', height)
+    .attr('text-anchor', 'end')
+    .attr('fill', CHART_COLORS.muted)
+    .attr('font-size', '9px')
+    .text('0');
+}
+
 // Render filler words
 function renderFillerWords(containerId, fillerCounts) {
   const container = d3.select(containerId);
@@ -966,28 +1219,189 @@ function renderFillerWords(containerId, fillerCounts) {
   });
 }
 
-// Render vocabulary diversity
-function renderVocabulary(containerId, uniqueWords, totalWords) {
+// Render new words this week
+function renderNewWordsThisWeek(containerId, newWords) {
   const container = d3.select(containerId);
   container.html('');
 
-  const richness = totalWords > 0 ? ((uniqueWords / totalWords) * 100).toFixed(1) : 0;
+  const div = container.append('div').attr('class', 'new-words-container');
 
-  const div = container.append('div').attr('class', 'vocab-stats');
+  // Big number
+  const main = div.append('div').attr('class', 'new-words-main');
+  main.append('div').attr('class', 'new-words-number').text(newWords.length);
+  main.append('div').attr('class', 'new-words-label').text('new words this week');
 
-  const main = div.append('div').attr('class', 'vocab-main');
-  main.append('div').attr('class', 'vocab-number').text(uniqueWords.toLocaleString());
-  main.append('div').attr('class', 'vocab-label').text('Unique Words');
+  // Show a few examples
+  if (newWords.length > 0) {
+    const examples = div.append('div').attr('class', 'new-words-examples');
+    const sampleWords = newWords.slice(0, 8);
+    sampleWords.forEach(word => {
+      examples.append('span').attr('class', 'new-word-tag').text(word);
+    });
+    if (newWords.length > 8) {
+      examples.append('span').attr('class', 'new-word-more').text(`+${newWords.length - 8} more`);
+    }
+  }
+}
 
-  const sub = div.append('div').attr('class', 'vocab-sub');
+// Render vocabulary growth chart
+function renderVocabGrowth(containerId, vocabGrowthArray) {
+  const container = d3.select(containerId);
+  container.html('');
 
-  const total = sub.append('div').attr('class', 'vocab-sub-item');
-  total.append('div').attr('class', 'vocab-sub-number').text(totalWords.toLocaleString());
-  total.append('div').attr('class', 'vocab-sub-label').text('Total Words');
+  if (vocabGrowthArray.length === 0) {
+    container.append('div').attr('class', 'analytics-empty').text('No data yet');
+    return;
+  }
 
-  const rich = sub.append('div').attr('class', 'vocab-sub-item');
-  rich.append('div').attr('class', 'vocab-sub-number').text(`${richness}%`);
-  rich.append('div').attr('class', 'vocab-sub-label').text('Richness');
+  const margin = { top: 10, right: 10, bottom: 25, left: 45 };
+  const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
+  const height = 130 - margin.top - margin.bottom;
+
+  if (width <= 0) return;
+
+  const svg = container.append('svg')
+    .attr('width', width + margin.left + margin.right)
+    .attr('height', height + margin.top + margin.bottom)
+    .append('g')
+    .attr('transform', `translate(${margin.left},${margin.top})`);
+
+  const x = d3.scaleTime()
+    .domain(d3.extent(vocabGrowthArray, d => new Date(d.date)))
+    .range([0, width]);
+
+  const y = d3.scaleLinear()
+    .domain([0, d3.max(vocabGrowthArray, d => d.count)])
+    .range([height, 0]);
+
+  // Area
+  const area = d3.area()
+    .x(d => x(new Date(d.date)))
+    .y0(height)
+    .y1(d => y(d.count))
+    .curve(d3.curveMonotoneX);
+
+  svg.append('path')
+    .datum(vocabGrowthArray)
+    .attr('fill', CHART_COLORS.accent)
+    .attr('fill-opacity', 0.3)
+    .attr('d', area);
+
+  // Line
+  const line = d3.line()
+    .x(d => x(new Date(d.date)))
+    .y(d => y(d.count))
+    .curve(d3.curveMonotoneX);
+
+  svg.append('path')
+    .datum(vocabGrowthArray)
+    .attr('fill', 'none')
+    .attr('stroke', CHART_COLORS.accent)
+    .attr('stroke-width', 2)
+    .attr('d', line);
+
+  // Y axis
+  svg.append('g')
+    .attr('class', 'axis')
+    .call(d3.axisLeft(y).ticks(4).tickFormat(d3.format('.2s')));
+
+  // X axis
+  svg.append('g')
+    .attr('class', 'axis')
+    .attr('transform', `translate(0,${height})`)
+    .call(d3.axisBottom(x).ticks(4).tickFormat(d3.timeFormat('%b %d')));
+}
+
+// Render rare words
+function renderRareWords(containerId, rareWords) {
+  const container = d3.select(containerId);
+  container.html('');
+
+  if (rareWords.length === 0) {
+    container.append('div').attr('class', 'analytics-empty').text('Keep talking to discover your rare words!');
+    return;
+  }
+
+  const div = container.append('div').attr('class', 'rare-words-container');
+
+  rareWords.forEach(([word, count]) => {
+    const tag = div.append('span').attr('class', 'rare-word-tag');
+    tag.append('span').attr('class', 'rare-word-text').text(word);
+    tag.append('span').attr('class', 'rare-word-count').text(count);
+  });
+}
+
+// Render reading level gauge
+function renderReadingLevel(containerId, readingLevel) {
+  const container = d3.select(containerId);
+  container.html('');
+
+  const grade = Math.round(readingLevel);
+  const gradeLabels = {
+    1: '1st', 2: '2nd', 3: '3rd', 4: '4th', 5: '5th', 6: '6th',
+    7: '7th', 8: '8th', 9: '9th', 10: '10th', 11: '11th', 12: '12th',
+    13: 'College', 14: 'College', 15: 'College+', 16: 'Graduate', 17: 'Graduate', 18: 'Graduate+'
+  };
+  const gradeLabel = gradeLabels[grade] || `${grade}th`;
+
+  const div = container.append('div').attr('class', 'reading-level-container');
+
+  // Grade display
+  const main = div.append('div').attr('class', 'reading-level-main');
+  main.append('div').attr('class', 'reading-level-grade').text(gradeLabel);
+  main.append('div').attr('class', 'reading-level-label').text('grade level');
+
+  // Visual scale
+  const scale = div.append('div').attr('class', 'reading-level-scale');
+  const position = Math.min(100, (readingLevel / 16) * 100);
+  scale.append('div').attr('class', 'reading-level-track');
+  scale.append('div').attr('class', 'reading-level-marker').style('left', `${position}%`);
+
+  // Labels
+  const labels = div.append('div').attr('class', 'reading-level-labels');
+  labels.append('span').text('Simple');
+  labels.append('span').text('Complex');
+}
+
+// Render word length distribution
+function renderWordLengthDist(containerId, wordLengthDist) {
+  const container = d3.select(containerId);
+  container.html('');
+
+  const total = wordLengthDist.short + wordLengthDist.medium + wordLengthDist.long;
+  if (total === 0) {
+    container.append('div').attr('class', 'analytics-empty').text('No data yet');
+    return;
+  }
+
+  const data = [
+    { label: '1-3', value: wordLengthDist.short, color: CHART_COLORS.green },
+    { label: '4-6', value: wordLengthDist.medium, color: CHART_COLORS.accent },
+    { label: '7+', value: wordLengthDist.long, color: CHART_COLORS.purple }
+  ];
+
+  const div = container.append('div').attr('class', 'word-length-container');
+
+  // Stacked bar
+  const bar = div.append('div').attr('class', 'word-length-bar');
+  data.forEach(d => {
+    const pct = (d.value / total) * 100;
+    if (pct > 0) {
+      bar.append('div')
+        .attr('class', 'word-length-segment')
+        .style('width', `${pct}%`)
+        .style('background', d.color);
+    }
+  });
+
+  // Legend
+  const legend = div.append('div').attr('class', 'word-length-legend');
+  data.forEach(d => {
+    const item = legend.append('div').attr('class', 'word-length-legend-item');
+    item.append('span').attr('class', 'word-length-dot').style('background', d.color);
+    item.append('span').attr('class', 'word-length-legend-label').text(`${d.label} chars`);
+    item.append('span').attr('class', 'word-length-legend-value').text(`${Math.round((d.value / total) * 100)}%`);
+  });
 }
 
 // Render common phrases
@@ -1350,10 +1764,12 @@ function renderAnalytics(entries) {
   console.log('[Analytics] renderAnalytics called with', entries ? entries.length : 0, 'entries');
 
   const allContainers = [
-    '#streaks-card', '#records-card', '#goals-card', '#activity-heatmap',
-    '#activity-yearly', '#words-chart', '#time-saved-chart', '#wpm-chart', '#mode-donut',
-    '#period-comparison', '#filler-words', '#vocabulary-diversity',
-    '#common-phrases', '#wpm-by-hour', '#session-histogram',
+    '#streaks-card', '#records-card', '#goals-card', '#sessions-today',
+    '#activity-heatmap', '#activity-yearly', '#peak-hours',
+    '#words-chart', '#time-saved-chart', '#wpm-chart', '#mode-donut',
+    '#period-comparison', '#filler-words', '#common-phrases',
+    '#new-words-week', '#reading-level', '#vocab-growth', '#word-length-dist', '#rare-words',
+    '#wpm-by-hour', '#session-histogram',
     '#word-cloud', '#sentiment-chart'
   ];
 
@@ -1371,6 +1787,7 @@ function renderAnalytics(entries) {
   renderStreaks('#streaks-card', data.currentStreak, data.longestStreak);
   renderRecords('#records-card', data.maxWpm, data.maxWordsInDay, data.longestSession);
   renderGoals('#goals-card', data.todayData, data.thisWeekWords);
+  renderSessionsToday('#sessions-today', data.todayData);
 
   // Original charts - only render the visible heatmap
   const yearlyTab = document.querySelector('.activity-tab[data-view="yearly"]');
@@ -1380,6 +1797,7 @@ function renderAnalytics(entries) {
   if (isYearlyActive) {
     renderYearlyHeatmap('#activity-yearly', data.dailyData);
   }
+  renderPeakHours('#peak-hours', data.activityMatrix);
   renderWordsChart('#words-chart', data.dailyArray);
   renderTimeSavedChart('#time-saved-chart', data.dailyArray);
   renderWpmChart('#wpm-chart', data.dailyArray);
@@ -1390,8 +1808,14 @@ function renderAnalytics(entries) {
 
   // Speech patterns
   renderFillerWords('#filler-words', data.fillerCounts);
-  renderVocabulary('#vocabulary-diversity', data.uniqueWords, data.totalWords);
   renderCommonPhrases('#common-phrases', data.topBigrams, data.topTrigrams);
+
+  // Vocabulary charts
+  renderNewWordsThisWeek('#new-words-week', data.newWordsThisWeek);
+  renderReadingLevel('#reading-level', data.readingLevel);
+  renderVocabGrowth('#vocab-growth', data.vocabGrowthArray);
+  renderWordLengthDist('#word-length-dist', data.wordLengthDist);
+  renderRareWords('#rare-words', data.rareWords);
 
   // Time analysis
   renderWpmByHour('#wpm-by-hour', data.avgWpmByHour);
@@ -1410,10 +1834,13 @@ window.addEventListener('resize', () => {
     const analyticsPanel = document.getElementById('analytics-panel');
     if (analyticsPanel && analyticsPanel.style.display !== 'none' && cachedAnalyticsData) {
       // Re-render responsive charts (heatmaps are fixed size, no need to re-render)
+      renderSessionsToday('#sessions-today', cachedAnalyticsData.todayData);
+      renderPeakHours('#peak-hours', cachedAnalyticsData.activityMatrix);
       renderWordsChart('#words-chart', cachedAnalyticsData.dailyArray);
       renderTimeSavedChart('#time-saved-chart', cachedAnalyticsData.dailyArray);
       renderWpmChart('#wpm-chart', cachedAnalyticsData.dailyArray);
       renderModeDonut('#mode-donut', cachedAnalyticsData.modeCounts);
+      renderVocabGrowth('#vocab-growth', cachedAnalyticsData.vocabGrowthArray);
       renderWpmByHour('#wpm-by-hour', cachedAnalyticsData.avgWpmByHour);
       renderSessionHistogram('#session-histogram', cachedAnalyticsData.sessionDurations);
       renderWordCloud('#word-cloud', cachedAnalyticsData.wordFrequency);

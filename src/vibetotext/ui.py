@@ -6,6 +6,8 @@ import platform
 import subprocess
 import sys
 import tempfile
+import threading
+import queue
 
 # Platform detection
 IS_MACOS = platform.system() == "Darwin"
@@ -18,6 +20,49 @@ else:
     _ipc_file = os.path.join(tempfile.gettempdir(), "vibetotext_ui_ipc.json")
 
 _ui_process = None
+
+# Non-blocking IPC queue and worker thread
+_ipc_queue = queue.Queue(maxsize=10)  # Small buffer, drop old frames if full
+_ipc_thread = None
+_ipc_stop_event = threading.Event()
+
+
+def _ipc_worker():
+    """Background thread that writes IPC data. Runs until stop event is set."""
+    while not _ipc_stop_event.is_set():
+        try:
+            # Wait for data with timeout so we can check stop event
+            data = _ipc_queue.get(timeout=0.1)
+            _write_ipc_sync(data)
+        except queue.Empty:
+            continue
+        except Exception:
+            pass
+
+
+def _ensure_ipc_thread():
+    """Start the IPC worker thread if not running."""
+    global _ipc_thread
+    if _ipc_thread is None or not _ipc_thread.is_alive():
+        _ipc_stop_event.clear()
+        _ipc_thread = threading.Thread(target=_ipc_worker, daemon=True)
+        _ipc_thread.start()
+
+
+def _write_ipc_async(data):
+    """Queue data for async IPC write. Non-blocking, drops old data if queue full."""
+    _ensure_ipc_thread()
+    try:
+        # Use put_nowait to never block the audio thread
+        # If queue is full, drop the oldest item and add new one
+        if _ipc_queue.full():
+            try:
+                _ipc_queue.get_nowait()  # Drop oldest
+            except queue.Empty:
+                pass
+        _ipc_queue.put_nowait(data)
+    except Exception:
+        pass  # Never block or raise in audio callback path
 
 
 def _get_cursor_and_screen():
@@ -84,8 +129,8 @@ def _get_cursor_and_screen():
     return {"screen_x": 0, "screen_y": 0, "screen_w": 1920, "screen_h": 1080}
 
 
-def _write_ipc(data):
-    """Write data to IPC file atomically."""
+def _write_ipc_sync(data):
+    """Write data to IPC file atomically (blocking - use from worker thread only)."""
     try:
         # Write to temp file first, then rename (atomic)
         tmp_file = _ipc_file + ".tmp"
@@ -94,6 +139,13 @@ def _write_ipc(data):
         os.replace(tmp_file, _ipc_file)  # Atomic rename
     except Exception:
         pass
+
+
+def _write_ipc(data):
+    """Write data to IPC file - uses sync for control messages, async for waveform."""
+    # Control messages (show/hide/stop) use sync write for reliability
+    # Waveform updates use async to avoid blocking audio callback
+    _write_ipc_sync(data)
 
 
 def _find_ui_binary():
@@ -203,11 +255,16 @@ _update_counter = 0
 
 
 def update_waveform(levels):
-    """Update waveform with frequency band levels (list of 0.0 to 1.0)."""
+    """Update waveform with frequency band levels (list of 0.0 to 1.0).
+
+    IMPORTANT: This is called from the audio callback thread.
+    Must be non-blocking to avoid deadlock on stream.stop().
+    """
     global _update_counter
     _update_counter += 1
-    # Include counter so UI can detect changes even when mtime doesn't update
-    _write_ipc({"recording": True, "levels": levels, "seq": _update_counter})
+    # Use async write to avoid blocking the audio callback thread
+    # This prevents deadlock when stream.stop() waits for callback to complete
+    _write_ipc_async({"recording": True, "levels": levels, "seq": _update_counter})
 
 
 def process_ui_events():
@@ -216,9 +273,16 @@ def process_ui_events():
 
 
 def stop_ui():
-    """Stop the UI process."""
-    global _ui_process
+    """Stop the UI process and IPC worker thread."""
+    global _ui_process, _ipc_thread
     _write_ipc({"stop": True})
+
+    # Stop the IPC worker thread
+    _ipc_stop_event.set()
+    if _ipc_thread is not None:
+        _ipc_thread.join(timeout=0.5)
+        _ipc_thread = None
+
     if _ui_process is not None:
         try:
             _ui_process.terminate()
