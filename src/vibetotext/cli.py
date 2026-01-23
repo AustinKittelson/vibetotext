@@ -36,8 +36,8 @@ def main():
     )
     parser.add_argument(
         "--greppy-hotkey",
-        default="cmd+shift",
-        help="Hotkey for Greppy semantic search mode (default: cmd+shift)",
+        default="cmd+alt+shift",
+        help="Hotkey for Greppy semantic search mode (default: cmd+alt+shift)",
     )
     parser.add_argument(
         "--cleanup-hotkey",
