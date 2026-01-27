@@ -214,6 +214,17 @@ def main():
             if not text:
                 return
 
+            # Filter out Whisper blank audio / silence markers
+            text_lower = text.strip().lower()
+            noise_markers = (
+                "[blank_audio]", "[blank audio]", "[ blank_audio ]", "[ blank audio ]",
+                "[silence]", "[ silence ]", "(silence)", "( silence )",
+                "[inaudible]", "[ inaudible ]", "(inaudible)", "( inaudible )",
+                "[no speech]", "[ no speech ]", "(no speech)", "( no speech )",
+            )
+            if text_lower in noise_markers:
+                return
+
             if mode == "greppy":
                 # Greppy mode: search for relevant files and attach them
                 files = search_files(text, limit=args.greppy_limit, codebase=args.codebase)

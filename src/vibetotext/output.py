@@ -176,6 +176,11 @@ def paste_at_cursor(text: str):
     Copy text to clipboard and auto-paste at cursor.
     Falls back to clipboard-only if no Accessibility permission (macOS).
     """
+    # Don't replace clipboard with empty or whitespace-only text
+    if not text or not text.strip():
+        log_debug(" Skipping paste: text is empty or whitespace-only")
+        return
+
     # Copy to clipboard first
     pyperclip.copy(text)
     log_debug(f" Copied {len(text)} chars to clipboard")

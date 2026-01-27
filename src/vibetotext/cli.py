@@ -197,8 +197,15 @@ def main():
                 print("No speech detected.")
                 return
 
-            # Filter out Whisper blank audio markers
-            if text.strip().lower() in ("[blank_audio]", "[blank audio]", "[ blank_audio ]", "[ blank audio ]"):
+            # Filter out Whisper blank audio / silence markers
+            text_lower = text.strip().lower()
+            noise_markers = (
+                "[blank_audio]", "[blank audio]", "[ blank_audio ]", "[ blank audio ]",
+                "[silence]", "[ silence ]", "(silence)", "( silence )",
+                "[inaudible]", "[ inaudible ]", "(inaudible)", "( inaudible )",
+                "[no speech]", "[ no speech ]", "(no speech)", "( no speech )",
+            )
+            if text_lower in noise_markers:
                 print("No speech detected (blank audio).")
                 return
 

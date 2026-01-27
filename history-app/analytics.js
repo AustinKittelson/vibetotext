@@ -455,11 +455,11 @@ function renderActivityHeatmap(containerId, activityMatrix) {
   const container = d3.select(containerId);
   container.html('');
 
-  const margin = { top: 5, right: 20, bottom: 25, left: 35 };
+  const margin = { top: 5, right: 15, bottom: 20, left: 30 };
 
   // Cap cell sizes for compact display
-  const maxCellWidth = 18;
-  const maxCellHeight = 14;
+  const maxCellWidth = 15;
+  const maxCellHeight = 12;
   const cellGap = 2;
 
   const cellWidth = maxCellWidth;
@@ -1049,9 +1049,9 @@ function renderSessionsToday(containerId, todayData) {
   const targetSessions = 10; // Target sessions per day
   const percentage = Math.min(100, (sessions / targetSessions) * 100);
 
-  const width = 180;
-  const height = 140;
-  const thickness = 12;
+  const width = 140;
+  const height = 110;
+  const thickness = 10;
   const radius = Math.min(width, height) / 2 - thickness;
 
   const svg = container.append('svg')
@@ -1087,18 +1087,18 @@ function renderSessionsToday(containerId, todayData) {
   svg.append('text')
     .attr('text-anchor', 'middle')
     .attr('dominant-baseline', 'middle')
-    .attr('y', -10)
+    .attr('y', -8)
     .attr('fill', CHART_COLORS.accent)
-    .attr('font-size', '32px')
+    .attr('font-size', '26px')
     .attr('font-weight', '600')
     .text(sessions);
 
   svg.append('text')
     .attr('text-anchor', 'middle')
     .attr('dominant-baseline', 'middle')
-    .attr('y', 18)
+    .attr('y', 12)
     .attr('fill', CHART_COLORS.muted)
-    .attr('font-size', '11px')
+    .attr('font-size', '10px')
     .text('sessions');
 
   // Duration info below
@@ -1106,10 +1106,10 @@ function renderSessionsToday(containerId, todayData) {
   const minutes = Math.floor(duration / 60);
   svg.append('text')
     .attr('text-anchor', 'middle')
-    .attr('y', 50)
+    .attr('y', 38)
     .attr('fill', CHART_COLORS.muted)
-    .attr('font-size', '10px')
-    .text(`${minutes}m recorded today`);
+    .attr('font-size', '9px')
+    .text(`${minutes}m recorded`);
 }
 
 // Render peak hours bar chart
@@ -1127,9 +1127,9 @@ function renderPeakHours(containerId, activityMatrix) {
 
   const maxVal = Math.max(...hourlyTotals) || 1;
 
-  const margin = { top: 10, right: 10, bottom: 25, left: 30 };
+  const margin = { top: 8, right: 8, bottom: 20, left: 25 };
   const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
-  const height = 130 - margin.top - margin.bottom;
+  const height = 100 - margin.top - margin.bottom;
 
   if (width <= 0) return;
 
