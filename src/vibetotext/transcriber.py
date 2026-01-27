@@ -127,6 +127,19 @@ class Transcriber:
         # Combine all segments into one string
         text = " ".join(segment.text for segment in segments).strip()
 
+        # Filter out Whisper artifacts like [end], [BLANK_AUDIO], etc.
+        text = self._filter_artifacts(text)
+
         print(f"[WHISPER.CPP] Transcribed in {time.time() - start:.2f}s")
 
+        return text
+
+    def _filter_artifacts(self, text: str) -> str:
+        """Remove Whisper artifacts like [end], [BLANK_AUDIO], etc."""
+        import re
+        # Remove bracketed artifacts (case-insensitive)
+        # Matches: [end], [BLANK_AUDIO], [silence], etc.
+        text = re.sub(r'\[(?:end|blank_audio|silence|music|applause)\]', '', text, flags=re.IGNORECASE)
+        # Clean up any extra whitespace left behind
+        text = re.sub(r'\s+', ' ', text).strip()
         return text
