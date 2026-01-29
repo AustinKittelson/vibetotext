@@ -91,15 +91,8 @@ class AppDelegate(NSObject):
             self.last_mtime = 0
             self.panel = None
             self.waveform_view = None
-            # Animation state
             self.base_width = 140
             self.base_height = 20
-            self.current_scale = 1.0
-            self.target_scale = 1.0
-            self.scale_velocity = 0.0
-            # Position anchors (right edge x, bottom y in screen coords)
-            self.anchor_right = 0
-            self.anchor_bottom = 0
         return self
 
     def applicationDidFinishLaunching_(self, notification):
@@ -167,75 +160,24 @@ class AppDelegate(NSObject):
                     screen_x = data.get("screen_x", 0)
                     screen_y = data.get("screen_y", 0)
                     screen_w = data.get("screen_w", 1920)
-                    # Reset scale for new recording
-                    self.current_scale = 1.0
-                    self.target_scale = 1.0
-                    self.scale_velocity = 0.0
                     width = self.base_width
                     height = self.base_height
-                    # Position with right edge at 74% of screen width
-                    right_edge_x = screen_x + int(screen_w * 0.74)
-                    new_x = right_edge_x - width
+                    # Center the widget at 2/3 of screen width
+                    center_x = screen_x + int(screen_w * 0.66)
+                    new_x = center_x - width // 2
                     # Position 20px from bottom of screen
                     new_y = screen_y + 20
-                    # Store anchors for animation (right edge and bottom stay fixed)
-                    self.anchor_right = right_edge_x
-                    self.anchor_bottom = new_y
 
-                    # Position and bring to front
                     self.panel.setFrame_display_(
                         NSMakeRect(new_x, new_y, width, height), True
                     )
                     self.panel.orderFrontRegardless()
 
-                # Update frequency band levels - use directly for responsiveness
+                # Update frequency band levels
                 if "levels" in data and self.recording:
                     self.levels = list(data["levels"])
                 elif not self.recording:
                     self.levels = [0.0] * 25
-
-                # Animate window size based on recording state (hotkey press/release)
-                if self.recording:
-                    # Grow when recording (hotkey held)
-                    self.target_scale = 3.0
-                else:
-                    # Shrink when not recording (hotkey released)
-                    self.target_scale = 1.0
-
-                # Always animate (even when not recording, to shrink back)
-                if True:
-
-                    # Smooth animation with spring-like physics
-                    scale_diff = self.target_scale - self.current_scale
-
-                    # Spring constants for smooth easing
-                    if abs(scale_diff) > 0.01:
-                        # Acceleration towards target with damping
-                        spring_strength = 0.15  # How fast it accelerates
-                        damping = 0.7  # How much velocity is preserved
-
-                        self.scale_velocity = self.scale_velocity * damping + scale_diff * spring_strength
-                        self.current_scale += self.scale_velocity
-
-                        # Clamp to valid range
-                        self.current_scale = max(1.0, min(3.0, self.current_scale))
-
-                        # Update window frame - grow left and up from anchored right/bottom
-                        new_width = int(self.base_width * self.current_scale)
-                        new_height = int(self.base_height * self.current_scale)
-                        new_x = self.anchor_right - new_width
-                        new_y = self.anchor_bottom  # Bottom stays fixed in macOS coords
-
-                        self.panel.setFrame_display_(
-                            NSMakeRect(new_x, new_y, new_width, new_height), True
-                        )
-                        self.waveform_view.setFrame_(NSMakeRect(0, 0, new_width, new_height))
-                    elif abs(scale_diff) <= 0.01 and abs(self.scale_velocity) > 0.001:
-                        # Settle at target
-                        self.scale_velocity *= 0.5
-                        if abs(self.scale_velocity) < 0.001:
-                            self.scale_velocity = 0
-                            self.current_scale = self.target_scale
 
                 # Update view
                 self.waveform_view.setLevels_recording_(list(self.levels), self.recording)
