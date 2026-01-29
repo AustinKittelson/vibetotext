@@ -26,6 +26,12 @@ def _log(msg: str):
 class AudioRecorder:
     """Records audio from microphone."""
 
+    NUM_BARS = 25
+    FFT_SIZE = 512
+    SMOOTHING = 0.7  # 70% previous, 30% new (like Web Audio smoothingTimeConstant)
+    SILENCE_THRESHOLD = 0.08
+    MIN_FREQ_BIN = 4  # Skip sub-bass rumble (~125Hz at 16kHz SR)
+
     def __init__(self, sample_rate: int = 16000, device: int | None = None):
         self.sample_rate = sample_rate
         self.device = device
@@ -33,6 +39,7 @@ class AudioRecorder:
         self.audio_queue = queue.Queue()
         self._audio_data = []
         self.on_level = None  # Callback for audio level updates
+        self._prev_levels = np.zeros(self.NUM_BARS)  # For smoothing
 
     def _callback(self, indata, frames, time, status):
         """Callback for sounddevice stream.
@@ -46,52 +53,65 @@ class AudioRecorder:
 
         self._audio_data.append(indata.copy())
 
-        # Calculate waveform visualization based on audio amplitude
+        # Calculate waveform visualization using FFT frequency analysis
         if self.on_level:
             audio = indata.flatten()
 
-            # Get RMS (overall volume)
+            # Gate on RMS - treat very quiet input as silence
             rms = np.sqrt(np.mean(audio**2))
-
-            # Scale RMS: 0.001 (quiet) → 0.1, 0.005 (normal) → 0.5, 0.01 (loud) → 1.0
             base_level = min(1.0, rms * 100)
 
-            # Threshold: if base level is very low, treat as silence
-            # Increased threshold to handle background noise
-            if base_level < 0.1:
-                self.on_level([0.0] * 25)
+            if base_level < self.SILENCE_THRESHOLD:
+                # Smooth decay to zero
+                self._prev_levels *= self.SMOOTHING
+                self.on_level(self._prev_levels.tolist())
                 return
 
-            # Create 25 bars with variation based on audio samples
-            num_bars = 25
-            levels = []
-
-            # Use actual audio samples to create variation across bars
-            if len(audio) >= num_bars:
-                step = len(audio) // num_bars
-                for i in range(num_bars):
-                    sample = abs(audio[i * step])
-                    # Combine base level with sample variation
-                    level = min(1.0, (base_level * 0.7) + (sample * 50))
-                    # Floor small values to zero
-                    if level < 0.05:
-                        level = 0.0
-                    levels.append(level)
+            # Zero-pad to FFT_SIZE if needed, then compute FFT
+            if len(audio) < self.FFT_SIZE:
+                audio = np.pad(audio, (0, self.FFT_SIZE - len(audio)))
             else:
-                # Fallback: use base level with random variation
-                for i in range(num_bars):
-                    variation = np.random.uniform(0.7, 1.3)
-                    level = min(1.0, base_level * variation)
-                    if level < 0.05:
-                        level = 0.0
-                    levels.append(level)
+                audio = audio[:self.FFT_SIZE]
 
-            self.on_level(levels)
+            # Apply Hanning window to reduce spectral leakage
+            window = np.hanning(len(audio))
+            spectrum = np.abs(np.fft.rfft(audio * window))
+
+            # Convert to dB-like scale (mimics getByteFrequencyData)
+            spectrum = np.clip(spectrum, 1e-10, None)
+            spectrum_db = 20 * np.log10(spectrum)
+            # Normalize: map roughly -60dB..0dB to 0..1
+            spectrum_norm = np.clip((spectrum_db + 60) / 60, 0, 1)
+
+            usable_bins = len(spectrum_norm) - self.MIN_FREQ_BIN
+            levels = np.zeros(self.NUM_BARS)
+
+            # Exponential frequency band mapping (more bars for low/mid)
+            for i in range(self.NUM_BARS):
+                # Map bar index to frequency range with power curve
+                lo = int(self.MIN_FREQ_BIN + usable_bins * ((i / self.NUM_BARS) ** 2.5))
+                hi = int(self.MIN_FREQ_BIN + usable_bins * (((i + 1) / self.NUM_BARS) ** 2.5))
+                hi = max(hi, lo + 1)  # At least one bin per bar
+
+                avg = np.mean(spectrum_norm[lo:hi])
+
+                # Bass reduction for first few bars
+                if i < 4:
+                    avg *= 0.5 + (i * 0.125)  # 0.5, 0.625, 0.75, 0.875
+
+                levels[i] = avg
+
+            # Temporal smoothing
+            levels = self._prev_levels * self.SMOOTHING + levels * (1 - self.SMOOTHING)
+            self._prev_levels = levels
+
+            self.on_level(levels.tolist())
 
     def start(self):
         """Start recording."""
         _log("START: Beginning recording")
         self._audio_data = []
+        self._prev_levels = np.zeros(self.NUM_BARS)
         self.recording = True
 
         # Log audio device info

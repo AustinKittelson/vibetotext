@@ -38,16 +38,21 @@ class WaveformView(NSView):
     def drawRect_(self, rect):
         # Draw rounded background
         NSColor.colorWithCalibratedRed_green_blue_alpha_(0.1, 0.1, 0.1, 0.95).set()
-        path = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(rect, 4, 4)
+        corner_radius = min(4, rect.size.height / 5)
+        path = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(rect, corner_radius, corner_radius)
         path.fill()
 
         width = rect.size.width
         height = rect.size.height
-        bar_width = 2
-        bar_spacing = 2
         num_bars = 25
-        total_width = num_bars * bar_width + (num_bars - 1) * bar_spacing
-        start_x = (width - total_width) / 2
+        # Scale bars to fill ~90% of container width
+        padding = width * 0.05  # 5% padding on each side
+        usable_width = width - (padding * 2)
+        # Calculate bar width and spacing to fill the usable width
+        bar_spacing = usable_width * 0.02  # 2% of usable width for spacing
+        total_spacing = bar_spacing * (num_bars - 1)
+        bar_width = (usable_width - total_spacing) / num_bars
+        start_x = padding
         center_y = height / 2
 
         if self.recording:
@@ -56,9 +61,10 @@ class WaveformView(NSView):
             for i in range(num_bars):
                 level = self.levels[i] if i < len(self.levels) else 0.0
                 x = start_x + i * (bar_width + bar_spacing)
-                # Bar height based on level, minimum 2px
-                bar_height = max(2, level * height * 0.75)
-                bar_height = min(bar_height, height * 0.8)
+                # Bar height based on level - scaled to show waveform detail without clipping
+                min_height = max(2, height * 0.1)
+                bar_height = max(min_height, level * height * 0.35)
+                bar_height = min(bar_height, height * 0.85)
                 y = center_y - bar_height / 2
                 bar_path = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
                     NSMakeRect(x, y, bar_width, bar_height), 1, 1
@@ -67,10 +73,11 @@ class WaveformView(NSView):
         else:
             # Gray color for idle - flat line
             NSColor.colorWithCalibratedRed_green_blue_alpha_(0.35, 0.35, 0.35, 1.0).set()
+            min_height = max(2, height * 0.1)
             for i in range(num_bars):
                 x = start_x + i * (bar_width + bar_spacing)
                 bar_path = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
-                    NSMakeRect(x, center_y - 1, bar_width, 2), 1, 1
+                    NSMakeRect(x, center_y - min_height / 2, bar_width, min_height), 1, 1
                 )
                 bar_path.fill()
 
@@ -84,6 +91,15 @@ class AppDelegate(NSObject):
             self.last_mtime = 0
             self.panel = None
             self.waveform_view = None
+            # Animation state
+            self.base_width = 140
+            self.base_height = 20
+            self.current_scale = 1.0
+            self.target_scale = 1.0
+            self.scale_velocity = 0.0
+            # Position anchors (right edge x, bottom y in screen coords)
+            self.anchor_right = 0
+            self.anchor_bottom = 0
         return self
 
     def applicationDidFinishLaunching_(self, notification):
@@ -151,33 +167,75 @@ class AppDelegate(NSObject):
                     screen_x = data.get("screen_x", 0)
                     screen_y = data.get("screen_y", 0)
                     screen_w = data.get("screen_w", 1920)
-                    width = 140
-                    height = 20
-                    # Center horizontally on the screen
-                    new_x = screen_x + (screen_w - width) // 2
+                    # Reset scale for new recording
+                    self.current_scale = 1.0
+                    self.target_scale = 1.0
+                    self.scale_velocity = 0.0
+                    width = self.base_width
+                    height = self.base_height
+                    # Position with right edge at 74% of screen width
+                    right_edge_x = screen_x + int(screen_w * 0.74)
+                    new_x = right_edge_x - width
                     # Position 20px from bottom of screen
                     new_y = screen_y + 20
+                    # Store anchors for animation (right edge and bottom stay fixed)
+                    self.anchor_right = right_edge_x
+                    self.anchor_bottom = new_y
 
                     # Position and bring to front
-                    self.panel.setFrameOrigin_((new_x, new_y))
+                    self.panel.setFrame_display_(
+                        NSMakeRect(new_x, new_y, width, height), True
+                    )
                     self.panel.orderFrontRegardless()
 
-                # Update frequency band levels with decay
+                # Update frequency band levels - use directly for responsiveness
                 if "levels" in data and self.recording:
-                    new_levels = data["levels"]
-                    # Smooth transition: rise fast, fall smoothly
-                    for i in range(len(self.levels)):
-                        if i < len(new_levels):
-                            if new_levels[i] > self.levels[i]:
-                                self.levels[i] = new_levels[i]  # Rise instantly
-                            else:
-                                self.levels[i] = self.levels[i] * 0.86 + new_levels[i] * 0.14  # Even slower decay
-                elif self.recording:
-                    # No new data but still recording - decay towards zero
-                    self.levels = [l * 0.9 for l in self.levels]
-                else:
-                    # Not recording - reset to zero
+                    self.levels = list(data["levels"])
+                elif not self.recording:
                     self.levels = [0.0] * 25
+
+                # Animate window size based on recording state (hotkey press/release)
+                if self.recording:
+                    # Grow when recording (hotkey held)
+                    self.target_scale = 3.0
+                else:
+                    # Shrink when not recording (hotkey released)
+                    self.target_scale = 1.0
+
+                # Always animate (even when not recording, to shrink back)
+                if True:
+
+                    # Smooth animation with spring-like physics
+                    scale_diff = self.target_scale - self.current_scale
+
+                    # Spring constants for smooth easing
+                    if abs(scale_diff) > 0.01:
+                        # Acceleration towards target with damping
+                        spring_strength = 0.15  # How fast it accelerates
+                        damping = 0.7  # How much velocity is preserved
+
+                        self.scale_velocity = self.scale_velocity * damping + scale_diff * spring_strength
+                        self.current_scale += self.scale_velocity
+
+                        # Clamp to valid range
+                        self.current_scale = max(1.0, min(3.0, self.current_scale))
+
+                        # Update window frame - grow left and up from anchored right/bottom
+                        new_width = int(self.base_width * self.current_scale)
+                        new_height = int(self.base_height * self.current_scale)
+                        new_x = self.anchor_right - new_width
+                        new_y = self.anchor_bottom  # Bottom stays fixed in macOS coords
+
+                        self.panel.setFrame_display_(
+                            NSMakeRect(new_x, new_y, new_width, new_height), True
+                        )
+                        self.waveform_view.setFrame_(NSMakeRect(0, 0, new_width, new_height))
+                    elif abs(scale_diff) <= 0.01 and abs(self.scale_velocity) > 0.001:
+                        # Settle at target
+                        self.scale_velocity *= 0.5
+                        if abs(self.scale_velocity) < 0.001:
+                            self.scale_velocity = 0
+                            self.current_scale = self.target_scale
 
                 # Update view
                 self.waveform_view.setLevels_recording_(list(self.levels), self.recording)
