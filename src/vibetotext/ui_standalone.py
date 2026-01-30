@@ -37,7 +37,7 @@ class WaveformView(NSView):
 
     def drawRect_(self, rect):
         # Draw rounded background
-        NSColor.colorWithCalibratedRed_green_blue_alpha_(0.1, 0.1, 0.1, 0.95).set()
+        NSColor.colorWithCalibratedRed_green_blue_alpha_(0.0, 0.0, 0.0, 0.95).set()
         corner_radius = min(4, rect.size.height / 5)
         path = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(rect, corner_radius, corner_radius)
         path.fill()
@@ -56,8 +56,8 @@ class WaveformView(NSView):
         center_y = height / 2
 
         if self.recording:
-            # Pink color for recording
-            NSColor.colorWithCalibratedRed_green_blue_alpha_(1.0, 0.4, 0.6, 1.0).set()
+            # White color for recording
+            NSColor.whiteColor().set()
             for i in range(num_bars):
                 level = self.levels[i] if i < len(self.levels) else 0.0
                 x = start_x + i * (bar_width + bar_spacing)
@@ -71,8 +71,8 @@ class WaveformView(NSView):
                 )
                 bar_path.fill()
         else:
-            # Gray color for idle - flat line
-            NSColor.colorWithCalibratedRed_green_blue_alpha_(0.35, 0.35, 0.35, 1.0).set()
+            # Onyx gray for idle - flat line (63, 63, 70)
+            NSColor.colorWithCalibratedRed_green_blue_alpha_(63/255, 63/255, 70/255, 1.0).set()
             min_height = max(2, height * 0.1)
             for i in range(num_bars):
                 x = start_x + i * (bar_width + bar_spacing)

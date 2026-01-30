@@ -4,21 +4,21 @@
 console.log('[Analytics] analytics.js loaded, D3 available:', typeof d3 !== 'undefined');
 
 const CHART_COLORS = {
-  accent: '#fbbf24',      // Amber - main chart color
-  green: '#34d399',       // Transcribe
-  purple: '#a78bfa',      // Greppy
-  orange: '#fb923c',      // Cleanup
-  blue: '#60a5fa',        // Plan
+  accent: '#fbbf24',      // Amber - sole accent color
+  green: '#fbbf24',       // Mapped to amber (monochrome theme)
+  purple: '#a1a1a6',      // Mapped to gray (monochrome theme)
+  orange: '#6e6e73',      // Mapped to muted gray (monochrome theme)
+  blue: '#d4d4d8',        // Mapped to light gray (monochrome theme)
   muted: '#6e6e73',
   border: '#2a2a32',
   bg: '#151518',
 };
 
 const MODE_COLORS = {
-  transcribe: CHART_COLORS.green,
-  greppy: CHART_COLORS.purple,
-  cleanup: CHART_COLORS.orange,
-  plan: CHART_COLORS.blue,
+  transcribe: '#e4e4e7',
+  greppy: '#a1a1aa',
+  cleanup: '#71717a',
+  plan: '#d4d4d8',
 };
 
 // Cache for re-rendering on tab switch/resize
@@ -470,9 +470,12 @@ function renderActivityHeatmap(containerId, activityMatrix) {
 
   if (width <= 0) return;
 
+  const totalWidth = width + margin.left + margin.right;
+  const totalHeight = height + margin.top + margin.bottom;
   const svg = container.append('svg')
-    .attr('width', width + margin.left + margin.right)
-    .attr('height', height + margin.top + margin.bottom)
+    .attr('viewBox', `0 0 ${totalWidth} ${totalHeight}`)
+    .attr('width', '100%')
+    .attr('preserveAspectRatio', 'xMinYMin meet')
     .append('g')
     .attr('transform', `translate(${margin.left},${margin.top})`);
 
@@ -559,9 +562,12 @@ function renderYearlyHeatmap(containerId, dailyData) {
   const width = numWeeks * (cellSize + cellGap);
   const height = 7 * (cellSize + cellGap);
 
+  const totalWidth = width + margin.left + margin.right;
+  const totalHeight = height + margin.top + margin.bottom;
   const svg = container.append('svg')
-    .attr('width', width + margin.left + margin.right)
-    .attr('height', height + margin.top + margin.bottom)
+    .attr('viewBox', `0 0 ${totalWidth} ${totalHeight}`)
+    .attr('width', '100%')
+    .attr('preserveAspectRatio', 'xMinYMin meet')
     .append('g')
     .attr('transform', `translate(${margin.left},${margin.top})`);
 
@@ -1375,9 +1381,9 @@ function renderWordLengthDist(containerId, wordLengthDist) {
   }
 
   const data = [
-    { label: '1-3', value: wordLengthDist.short, color: CHART_COLORS.green },
+    { label: '1-3', value: wordLengthDist.short, color: '#71717a' },
     { label: '4-6', value: wordLengthDist.medium, color: CHART_COLORS.accent },
-    { label: '7+', value: wordLengthDist.long, color: CHART_COLORS.purple }
+    { label: '7+', value: wordLengthDist.long, color: '#e4e4e7' }
   ];
 
   const div = container.append('div').attr('class', 'word-length-container');
@@ -1633,9 +1639,12 @@ function renderWordCloud(containerId, wordFrequency) {
 
   const div = container.append('div').attr('class', 'word-cloud-container');
 
+  const containerWidth = container.node().getBoundingClientRect().width;
+  const maxFontSize = containerWidth < 480 ? 24 : 36;
+  const minFontSize = containerWidth < 480 ? 10 : 12;
+
   words.forEach(([word, count]) => {
-    // Scale font size between 12px and 36px
-    const size = 12 + ((count - minCount) / (maxCount - minCount || 1)) * 24;
+    const size = minFontSize + ((count - minCount) / (maxCount - minCount || 1)) * (maxFontSize - minFontSize);
     div.append('span')
       .attr('class', 'cloud-word')
       .style('font-size', `${size}px`)
@@ -1697,7 +1706,7 @@ function renderSentimentChart(containerId, sentimentArray) {
 
   svg.append('path')
     .datum(sentimentArray)
-    .attr('fill', CHART_COLORS.green)
+    .attr('fill', CHART_COLORS.accent)
     .attr('fill-opacity', 0.3)
     .attr('d', areaPositive);
 
@@ -1710,7 +1719,7 @@ function renderSentimentChart(containerId, sentimentArray) {
 
   svg.append('path')
     .datum(sentimentArray)
-    .attr('fill', CHART_COLORS.orange)
+    .attr('fill', CHART_COLORS.muted)
     .attr('fill-opacity', 0.3)
     .attr('d', areaNegative);
 
@@ -1735,7 +1744,7 @@ function renderSentimentChart(containerId, sentimentArray) {
     .attr('cx', d => x(new Date(d.date)))
     .attr('cy', d => y(d.score))
     .attr('r', 3)
-    .attr('fill', d => d.score >= 0 ? CHART_COLORS.green : CHART_COLORS.orange)
+    .attr('fill', d => d.score >= 0 ? CHART_COLORS.accent : CHART_COLORS.muted)
     .on('mouseover', (event, d) => {
       showTooltip(event, `${d.date}: +${d.positive}/-${d.negative}`);
     })
