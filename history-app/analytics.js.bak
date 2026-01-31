@@ -128,7 +128,7 @@ function processData(entries) {
   // Session durations for histogram
   const sessionDurations = [];
 
-  // Sentiment by day (using VADER scores from DB when available)
+  // Sentiment by day
   const sentimentByDay = {};
 
   // Streak tracking
@@ -219,24 +219,18 @@ function processData(entries) {
       trigrams[trigram] = (trigrams[trigram] || 0) + 1;
     }
 
-    // Sentiment from VADER (stored in DB) or fallback to basic word-matching
+    // Sentiment analysis
+    let positive = 0, negative = 0;
+    words.forEach(word => {
+      if (POSITIVE_WORDS.has(word)) positive++;
+      if (NEGATIVE_WORDS.has(word)) negative++;
+    });
     if (!sentimentByDay[dateKey]) {
-      sentimentByDay[dateKey] = { scoreSum: 0, count: 0 };
+      sentimentByDay[dateKey] = { positive: 0, negative: 0, total: 0 };
     }
-    if (entry.sentiment != null) {
-      sentimentByDay[dateKey].scoreSum += entry.sentiment;
-      sentimentByDay[dateKey].count++;
-    } else {
-      // Fallback for entries without VADER score
-      let positive = 0, negative = 0;
-      words.forEach(word => {
-        if (POSITIVE_WORDS.has(word)) positive++;
-        if (NEGATIVE_WORDS.has(word)) negative++;
-      });
-      const fallbackScore = words.length > 0 ? (positive - negative) / Math.sqrt(words.length) : 0;
-      sentimentByDay[dateKey].scoreSum += fallbackScore;
-      sentimentByDay[dateKey].count++;
-    }
+    sentimentByDay[dateKey].positive += positive;
+    sentimentByDay[dateKey].negative += negative;
+    sentimentByDay[dateKey].total += words.length;
   });
 
   // Convert daily data to sorted array
@@ -389,11 +383,13 @@ function processData(entries) {
     else wordLengthDist.long++;
   });
 
-  // Sentiment array for charting (average VADER compound score per day)
+  // Sentiment array for charting
   const sentimentArray = Object.entries(sentimentByDay)
     .map(([date, data]) => ({
       date,
-      score: data.count > 0 ? data.scoreSum / data.count : 0,
+      score: data.total > 0 ? (data.positive - data.negative) / Math.sqrt(data.total) : 0,
+      positive: data.positive,
+      negative: data.negative,
     }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
@@ -1750,7 +1746,7 @@ function renderSentimentChart(containerId, sentimentArray) {
     .attr('r', 3)
     .attr('fill', d => d.score >= 0 ? CHART_COLORS.accent : CHART_COLORS.muted)
     .on('mouseover', (event, d) => {
-      showTooltip(event, `${d.date}: ${d.score >= 0 ? '+' : ''}${d.score.toFixed(2)}`);
+      showTooltip(event, `${d.date}: +${d.positive}/-${d.negative}`);
     })
     .on('mouseout', hideTooltip);
 
