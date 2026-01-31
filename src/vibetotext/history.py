@@ -252,6 +252,7 @@ class TranscriptionHistory:
                     "total_words": 0,
                     "total_sessions": 0,
                     "common_words": [],
+                    "longest_words": [],
                     "avg_wpm": 0,
                     "time_saved_minutes": 0,
                     "total_duration_seconds": 0,
@@ -287,10 +288,15 @@ class TranscriptionHistory:
             word_counts = Counter(all_words)
             common_words = word_counts.most_common(20)
 
+            # Longest unique words used, sorted by length descending
+            unique_words = set(all_words)
+            longest_words = sorted(unique_words, key=len, reverse=True)[:20]
+
             return {
                 "total_words": total_words,
                 "total_sessions": total_sessions,
                 "common_words": common_words,
+                "longest_words": longest_words,
                 "avg_wpm": avg_wpm,
                 "time_saved_minutes": round(time_saved_minutes, 1),
                 "total_duration_seconds": round(total_duration, 1),
