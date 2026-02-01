@@ -274,6 +274,9 @@ class HotkeyListener:
                 return
 
             # Use lock to prevent race condition when both hotkey parts release at once
+            # Invoke on_stop OUTSIDE the lock to avoid deadlock with stream.stop()
+            should_stop = False
+            mode = None
             with self._lock:
                 # If any hotkey part is released while recording, stop
                 if self._recording and self._active_parts and key_name in self._active_parts:
@@ -284,16 +287,19 @@ class HotkeyListener:
                     self._active_parts = None
                     # Clear pressed set to avoid stale state
                     self._pressed.clear()
-                    _log(f"HOTKEY: Released {key_name}, stopping recording mode={mode}")
-                    print(f"[HOTKEY] Stopping recording, mode={mode}")
-                    if self.on_stop:
-                        _log(f"HOTKEY: Calling on_stop callback...")
-                        stop_start = time.time()
-                        self.on_stop(mode)
-                        stop_elapsed = time.time() - stop_start
-                        _log(f"HOTKEY: on_stop callback completed in {stop_elapsed:.3f}s")
+                    should_stop = True
                 else:
                     self._pressed.discard(key_name)
+
+            if should_stop:
+                _log(f"HOTKEY: Released {key_name}, stopping recording mode={mode}")
+                print(f"[HOTKEY] Stopping recording, mode={mode}")
+                if self.on_stop:
+                    _log(f"HOTKEY: Calling on_stop callback...")
+                    stop_start = time.time()
+                    self.on_stop(mode)
+                    stop_elapsed = time.time() - stop_start
+                    _log(f"HOTKEY: on_stop callback completed in {stop_elapsed:.3f}s")
 
         self.listener = keyboard.Listener(on_press=on_press, on_release=on_release)
         self.listener.start()
