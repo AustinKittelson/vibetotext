@@ -89,8 +89,11 @@ function getTooltip() {
 
 function showTooltip(event, html) {
   const tip = getTooltip();
+  const vw = window.innerWidth;
+  const flipX = event.clientX > vw - 220;
+  const left = flipX ? event.pageX - 220 : event.pageX + 10;
   tip.html(html)
-    .style('left', (event.pageX + 10) + 'px')
+    .style('left', left + 'px')
     .style('top', (event.pageY - 10) + 'px')
     .style('opacity', 1);
 }
