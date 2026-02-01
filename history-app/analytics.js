@@ -243,14 +243,17 @@ function processData(entries) {
   const dailyArray = Object.values(dailyData)
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  // Calculate cumulative time saved and track max words
+  // Calculate cumulative time saved, cumulative talking time, and track max words
   let cumulativeTimeSaved = 0;
+  let cumulativeTalkingTime = 0;
   dailyArray.forEach(d => {
     const typingTimeMinutes = d.words / 40;
     const dictatingTimeMinutes = d.duration / 60;
     d.timeSavedToday = Math.max(0, typingTimeMinutes - dictatingTimeMinutes);
     cumulativeTimeSaved += d.timeSavedToday;
     d.cumulativeTimeSaved = cumulativeTimeSaved;
+    cumulativeTalkingTime += dictatingTimeMinutes;
+    d.cumulativeTalkingTime = cumulativeTalkingTime;
     d.avgWpm = d.wpmCount > 0 ? Math.round(d.wpmSum / d.wpmCount) : null;
     maxWordsInDay = Math.max(maxWordsInDay, d.words);
   });
@@ -816,6 +819,99 @@ function renderTimeSavedChart(containerId, dailyArray) {
   svg.append('g')
     .attr('class', 'axis')
     .call(d3.axisLeft(y).ticks(4).tickFormat(d => `${d}m`));
+}
+
+// Render cumulative talking time chart
+function renderCumulativeTalkingTimeChart(containerId, dailyArray) {
+  const container = d3.select(containerId);
+  container.html('');
+
+  if (dailyArray.length === 0) {
+    container.append('div').attr('class', 'analytics-empty').text('No data yet');
+    return;
+  }
+
+  const margin = { top: 20, right: 20, bottom: 30, left: 50 };
+  const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
+  const height = 150 - margin.top - margin.bottom;
+
+  if (width <= 0) return;
+
+  const svg = container.append('svg')
+    .attr('width', width + margin.left + margin.right)
+    .attr('height', height + margin.top + margin.bottom)
+    .append('g')
+    .attr('transform', `translate(${margin.left},${margin.top})`);
+
+  const x = d3.scaleTime()
+    .domain(d3.extent(dailyArray, d => new Date(d.date)))
+    .range([0, width]);
+
+  const y = d3.scaleLinear()
+    .domain([0, d3.max(dailyArray, d => d.cumulativeTalkingTime) * 1.1])
+    .range([height, 0]);
+
+  // Grid
+  svg.append('g')
+    .attr('class', 'grid')
+    .call(d3.axisLeft(y).tickSize(-width).tickFormat(''));
+
+  // Area
+  const area = d3.area()
+    .x(d => x(new Date(d.date)))
+    .y0(height)
+    .y1(d => y(d.cumulativeTalkingTime))
+    .curve(d3.curveMonotoneX);
+
+  svg.append('path')
+    .datum(dailyArray)
+    .attr('fill', CHART_COLORS.accent)
+    .attr('fill-opacity', 0.2)
+    .attr('d', area);
+
+  // Line
+  const line = d3.line()
+    .x(d => x(new Date(d.date)))
+    .y(d => y(d.cumulativeTalkingTime))
+    .curve(d3.curveMonotoneX);
+
+  svg.append('path')
+    .datum(dailyArray)
+    .attr('fill', 'none')
+    .attr('stroke', CHART_COLORS.accent)
+    .attr('stroke-width', 2)
+    .attr('d', line);
+
+  // Dots
+  svg.selectAll('.dot')
+    .data(dailyArray)
+    .enter()
+    .append('circle')
+    .attr('cx', d => x(new Date(d.date)))
+    .attr('cy', d => y(d.cumulativeTalkingTime))
+    .attr('r', 3)
+    .attr('fill', CHART_COLORS.accent)
+    .on('mouseover', (event, d) => {
+      const hours = Math.floor(d.cumulativeTalkingTime / 60);
+      const mins = Math.round(d.cumulativeTalkingTime % 60);
+      const label = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+      showTooltip(event, `${d.date}: ${label} total talking time`);
+    })
+    .on('mouseout', hideTooltip);
+
+  // Axes
+  svg.append('g')
+    .attr('class', 'axis')
+    .attr('transform', `translate(0,${height})`)
+    .call(d3.axisBottom(x).ticks(5).tickFormat(d3.timeFormat('%b %d')));
+
+  svg.append('g')
+    .attr('class', 'axis')
+    .call(d3.axisLeft(y).ticks(4).tickFormat(d => {
+      const hours = Math.floor(d / 60);
+      const mins = Math.round(d % 60);
+      return hours > 0 ? `${hours}h` : `${mins}m`;
+    }));
 }
 
 // Render WPM trends chart
@@ -1800,8 +1896,6 @@ function renderAnalytics(entries) {
   renderStreaks('#streaks-card', data.currentStreak, data.longestStreak);
   renderRecords('#records-card', data.maxWpm, data.maxWordsInDay, data.longestSession);
   renderGoals('#goals-card', data.todayData, data.thisWeekWords);
-  renderSessionsToday('#sessions-today', data.todayData);
-
   // Original charts - only render the visible heatmap
   const yearlyTab = document.querySelector('.activity-tab[data-view="yearly"]');
   const isYearlyActive = yearlyTab && yearlyTab.classList.contains('active');
@@ -1813,6 +1907,7 @@ function renderAnalytics(entries) {
   renderPeakHours('#peak-hours', data.activityMatrix);
   renderWordsChart('#words-chart', data.dailyArray);
   renderTimeSavedChart('#time-saved-chart', data.dailyArray);
+  renderCumulativeTalkingTimeChart('#cumulative-talking-time-chart', data.dailyArray);
   renderWpmChart('#wpm-chart', data.dailyArray);
   renderModeDonut('#mode-donut', data.modeCounts);
 
@@ -1832,8 +1927,6 @@ function renderAnalytics(entries) {
 
   // Time analysis
   renderWpmByHour('#wpm-by-hour', data.avgWpmByHour);
-  renderSessionHistogram('#session-histogram', data.sessionDurations);
-
   // Content
   renderWordCloud('#word-cloud', data.wordFrequency);
   renderSentimentChart('#sentiment-chart', data.sentimentArray);
@@ -1847,15 +1940,14 @@ window.addEventListener('resize', () => {
     const analyticsPanel = document.getElementById('analytics-panel');
     if (analyticsPanel && analyticsPanel.style.display !== 'none' && cachedAnalyticsData) {
       // Re-render responsive charts (heatmaps are fixed size, no need to re-render)
-      renderSessionsToday('#sessions-today', cachedAnalyticsData.todayData);
       renderPeakHours('#peak-hours', cachedAnalyticsData.activityMatrix);
       renderWordsChart('#words-chart', cachedAnalyticsData.dailyArray);
       renderTimeSavedChart('#time-saved-chart', cachedAnalyticsData.dailyArray);
+      renderCumulativeTalkingTimeChart('#cumulative-talking-time-chart', cachedAnalyticsData.dailyArray);
       renderWpmChart('#wpm-chart', cachedAnalyticsData.dailyArray);
       renderModeDonut('#mode-donut', cachedAnalyticsData.modeCounts);
       renderVocabGrowth('#vocab-growth', cachedAnalyticsData.vocabGrowthArray);
       renderWpmByHour('#wpm-by-hour', cachedAnalyticsData.avgWpmByHour);
-      renderSessionHistogram('#session-histogram', cachedAnalyticsData.sessionDurations);
       renderWordCloud('#word-cloud', cachedAnalyticsData.wordFrequency);
       renderSentimentChart('#sentiment-chart', cachedAnalyticsData.sentimentArray);
     }
