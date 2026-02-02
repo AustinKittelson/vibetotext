@@ -66,8 +66,8 @@ def main():
     )
     parser.add_argument(
         "--plan-hotkey",
-        default="cmd+alt",
-        help="Hotkey for implementation plan mode (default: cmd+alt)",
+        default="cmd+alt+/",
+        help="Hotkey for implementation plan mode (default: cmd+alt+/)",
     )
     parser.add_argument(
         "--history-hotkey",

@@ -765,7 +765,7 @@ function renderTimeSavedChart(containerId, dailyArray) {
     .range([0, width]);
 
   const y = d3.scaleLinear()
-    .domain([0, d3.max(dailyArray, d => d.cumulativeTimeSaved) * 1.1])
+    .domain([0, d3.max(dailyArray, d => d.cumulativeTimeSaved / 60) * 1.1])
     .range([height, 0]);
 
   // Grid
@@ -777,7 +777,7 @@ function renderTimeSavedChart(containerId, dailyArray) {
   const area = d3.area()
     .x(d => x(new Date(d.date)))
     .y0(height)
-    .y1(d => y(d.cumulativeTimeSaved))
+    .y1(d => y(d.cumulativeTimeSaved / 60))
     .curve(d3.curveMonotoneX);
 
   svg.append('path')
@@ -789,7 +789,7 @@ function renderTimeSavedChart(containerId, dailyArray) {
   // Line
   const line = d3.line()
     .x(d => x(new Date(d.date)))
-    .y(d => y(d.cumulativeTimeSaved))
+    .y(d => y(d.cumulativeTimeSaved / 60))
     .curve(d3.curveMonotoneX);
 
   svg.append('path')
@@ -805,11 +805,11 @@ function renderTimeSavedChart(containerId, dailyArray) {
     .enter()
     .append('circle')
     .attr('cx', d => x(new Date(d.date)))
-    .attr('cy', d => y(d.cumulativeTimeSaved))
+    .attr('cy', d => y(d.cumulativeTimeSaved / 60))
     .attr('r', 3)
     .attr('fill', CHART_COLORS.green)
     .on('mouseover', (event, d) => {
-      showTooltip(event, `${d.date}: ${d.cumulativeTimeSaved.toFixed(1)} min saved total`);
+      showTooltip(event, `${d.date}: ${(d.cumulativeTimeSaved / 60).toFixed(1)} hrs saved total`);
     })
     .on('mouseout', hideTooltip);
 
@@ -821,7 +821,7 @@ function renderTimeSavedChart(containerId, dailyArray) {
 
   svg.append('g')
     .attr('class', 'axis')
-    .call(d3.axisLeft(y).ticks(4).tickFormat(d => `${d}m`));
+    .call(d3.axisLeft(y).ticks(4).tickFormat(d => `${d}h`));
 }
 
 // Render cumulative talking time chart
