@@ -904,6 +904,27 @@ body {
   flex-wrap: wrap;
   justify-content: center;
   gap: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.new-words-examples::-webkit-scrollbar {
+  width: 6px;
+}
+
+.new-words-examples::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.new-words-examples::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+.new-words-examples::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }
 
 .new-word-tag {
@@ -918,6 +939,17 @@ body {
   padding: 4px 10px;
   font-size: 11px;
   color: var(--text-muted);
+}
+
+.new-word-more-clickable {
+  cursor: pointer;
+  border-radius: 12px;
+  background: var(--bg-tertiary);
+}
+
+.new-word-more-clickable:hover {
+  color: var(--text-secondary);
+  background: var(--bg-hover, var(--bg-tertiary));
 }
 
 /* Reading Level */

@@ -1348,7 +1348,26 @@ function renderNewWordsThisWeek(containerId, newWords) {
       examples.append('span').attr('class', 'new-word-tag').text(word);
     });
     if (newWords.length > 8) {
-      examples.append('span').attr('class', 'new-word-more').text(`+${newWords.length - 8} more`);
+      let expanded = false;
+      const moreSpan = examples.append('span')
+        .attr('class', 'new-word-more new-word-more-clickable')
+        .text(`+${newWords.length - 8} more`)
+        .on('click', () => {
+          if (!expanded) {
+            expanded = true;
+            moreSpan.remove();
+            const remainingWords = newWords.slice(8);
+            remainingWords.forEach(word => {
+              examples.append('span').attr('class', 'new-word-tag').text(word);
+            });
+            examples.append('span')
+              .attr('class', 'new-word-more new-word-more-clickable')
+              .text('show less')
+              .on('click', () => {
+                renderNewWordsThisWeek(containerId, newWords);
+              });
+          }
+        });
     }
   }
 }
