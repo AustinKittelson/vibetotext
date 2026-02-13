@@ -185,17 +185,19 @@ class AudioRecorder:
 class HotkeyListener:
     """Listens for multiple hotkeys to toggle recording."""
 
-    def __init__(self, hotkeys: dict = None, max_recording_seconds: int = 60):
+    def __init__(self, hotkeys: dict = None, max_recording_seconds: int = 60, toggle_mode: bool = True):
         """
         Args:
             hotkeys: Dict mapping hotkey strings to mode names.
                      e.g. {"ctrl+shift": "transcribe", "cmd+shift": "greppy"}
             max_recording_seconds: Auto-stop recording after this many seconds (default: 60)
+            toggle_mode: If True, tap hotkey to start/stop. If False, hold to record.
         """
         if hotkeys is None:
             hotkeys = {"ctrl+shift": "transcribe"}
         self.hotkeys = hotkeys
         self.max_recording_seconds = max_recording_seconds
+        self.toggle_mode = toggle_mode
         self.on_start = None  # Called with mode name
         self.on_stop = None   # Called with mode name
         self._pressed = set()
@@ -203,6 +205,7 @@ class HotkeyListener:
         self._active_mode = None
         self._timeout_timer = None
         self._lock = threading.Lock()  # Prevent race condition on key release
+        self._combo_ready = True  # Track if combo can trigger again (prevents repeat while holding)
 
     def _cancel_timeout(self):
         """Cancel any pending timeout."""
@@ -243,32 +246,80 @@ class HotkeyListener:
             except AttributeError:
                 return
 
+            # Handle Escape to cancel recording
+            if key_name == 'esc' and self._recording:
+                print("[HOTKEY] ESC pressed - canceling recording")
+                self._cancel_timeout()
+                self._recording = False
+                self._active_mode = None
+                self._active_parts = None
+                self._pressed.clear()
+                self._combo_ready = True
+                return
+
             self._pressed.add(key_name)
             print(f"[KEY] Pressed: {key_name} | Holding: {sorted(self._pressed)}")  # Debug
 
             # Check if any hotkey combo is pressed (check longer combos first)
-            if not self._recording:
-                # Sort by length descending to match most specific first
+            if self._combo_ready:  # Only trigger if combo is ready
                 for mode, parts in sorted(self._parsed_hotkeys.items(),
                                           key=lambda x: len(x[1]), reverse=True):
                     if parts.issubset(self._pressed):
-                        self._recording = True
-                        self._active_mode = mode
-                        self._active_parts = parts
-                        print(f"[HOTKEY] ✓ MATCHED {mode.upper()} mode! (keys: {sorted(parts)})")  # Debug
-                        _log(f"HOTKEY: Pressed {key_name}, starting recording mode={mode}")
+                        self._combo_ready = False  # Prevent repeat until keys released
 
-                        # Start timeout timer
-                        self._cancel_timeout()
-                        self._timeout_timer = threading.Timer(
-                            self.max_recording_seconds,
-                            self._timeout_stop
-                        )
-                        self._timeout_timer.daemon = True
-                        self._timeout_timer.start()
+                        if self.toggle_mode:
+                            # TOGGLE MODE: tap once to start, tap again to stop
+                            if not self._recording:
+                                # Start recording
+                                self._recording = True
+                                self._active_mode = mode
+                                self._active_parts = parts
+                                print(f"[HOTKEY] ✓ START {mode.upper()} (toggle mode)")
+                                _log(f"HOTKEY: Toggle ON - mode={mode}")
 
-                        if self.on_start:
-                            self.on_start(mode)
+                                # Start timeout timer
+                                self._cancel_timeout()
+                                self._timeout_timer = threading.Timer(
+                                    self.max_recording_seconds,
+                                    self._timeout_stop
+                                )
+                                self._timeout_timer.daemon = True
+                                self._timeout_timer.start()
+
+                                if self.on_start:
+                                    self.on_start(mode)
+                            else:
+                                # Stop recording
+                                self._cancel_timeout()
+                                mode = self._active_mode
+                                self._recording = False
+                                self._active_mode = None
+                                self._active_parts = None
+                                print(f"[HOTKEY] ✓ STOP {mode.upper()} (toggle mode)")
+                                _log(f"HOTKEY: Toggle OFF - mode={mode}")
+
+                                if self.on_stop:
+                                    self.on_stop(mode)
+                        else:
+                            # HOLD MODE: press to start, release to stop (original behavior)
+                            if not self._recording:
+                                self._recording = True
+                                self._active_mode = mode
+                                self._active_parts = parts
+                                print(f"[HOTKEY] ✓ MATCHED {mode.upper()} mode! (keys: {sorted(parts)})")
+                                _log(f"HOTKEY: Pressed {key_name}, starting recording mode={mode}")
+
+                                # Start timeout timer
+                                self._cancel_timeout()
+                                self._timeout_timer = threading.Timer(
+                                    self.max_recording_seconds,
+                                    self._timeout_stop
+                                )
+                                self._timeout_timer.daemon = True
+                                self._timeout_timer.start()
+
+                                if self.on_start:
+                                    self.on_start(mode)
                         break
 
         def on_release(key):
@@ -281,8 +332,20 @@ class HotkeyListener:
 
             # Use lock to prevent race condition when both hotkey parts release at once
             with self._lock:
-                # If any hotkey part is released while recording, stop
-                if self._recording and self._active_parts and key_name in self._active_parts:
+                self._pressed.discard(key_name)
+
+                # Check if combo is now released (all parts released)
+                all_released = True
+                for mode, parts in self._parsed_hotkeys.items():
+                    if parts.issubset(self._pressed):
+                        all_released = False
+                        break
+
+                if all_released:
+                    self._combo_ready = True  # Ready for next trigger
+
+                # HOLD MODE ONLY: If any hotkey part is released while recording, stop
+                if not self.toggle_mode and self._recording and self._active_parts and key_name in self._active_parts:
                     self._cancel_timeout()
                     mode = self._active_mode
                     self._recording = False
@@ -298,8 +361,6 @@ class HotkeyListener:
                         self.on_stop(mode)
                         stop_elapsed = time.time() - stop_start
                         _log(f"HOTKEY: on_stop callback completed in {stop_elapsed:.3f}s")
-                else:
-                    self._pressed.discard(key_name)
 
         self.listener = keyboard.Listener(on_press=on_press, on_release=on_release)
         self.listener.start()

@@ -76,6 +76,11 @@ def main():
         action="store_true",
         help="Disable visual recording indicator",
     )
+    parser.add_argument(
+        "--hold-mode",
+        action="store_true",
+        help="Use hold-to-record mode instead of tap-to-toggle (default: toggle mode)",
+    )
 
     args = parser.parse_args()
 
@@ -130,7 +135,8 @@ def main():
         args.cleanup_hotkey: "cleanup",
         args.plan_hotkey: "plan",
     }
-    listener = HotkeyListener(hotkeys=hotkeys)
+    toggle_mode = not args.hold_mode  # Default to toggle mode unless --hold-mode specified
+    listener = HotkeyListener(hotkeys=hotkeys, toggle_mode=toggle_mode)
 
     # Track current mode
     current_mode = [None]  # Use list to allow mutation in nested function
@@ -139,7 +145,10 @@ def main():
     if ui:
         recorder.on_level = ui.update_waveform
 
-    print(f"vibetotext ready. Hold hotkey to record, release to process.")
+    if toggle_mode:
+        print(f"vibetotext ready. Tap hotkey to start/stop recording, ESC to cancel.")
+    else:
+        print(f"vibetotext ready. Hold hotkey to record, release to process.")
     print(f"  [{args.hotkey}] = transcribe + paste")
     print(f"  [{args.greppy_hotkey}] = Greppy search + attach files")
     print(f"  [{args.cleanup_hotkey}] = cleanup/refine with Gemini")
