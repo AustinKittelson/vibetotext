@@ -244,6 +244,7 @@ class HotkeyListener:
                 return
 
             self._pressed.add(key_name)
+            print(f"[KEY] Pressed: {key_name} | Holding: {sorted(self._pressed)}")  # Debug
 
             # Check if any hotkey combo is pressed (check longer combos first)
             if not self._recording:
@@ -254,6 +255,7 @@ class HotkeyListener:
                         self._recording = True
                         self._active_mode = mode
                         self._active_parts = parts
+                        print(f"[HOTKEY] ✓ MATCHED {mode.upper()} mode! (keys: {sorted(parts)})")  # Debug
                         _log(f"HOTKEY: Pressed {key_name}, starting recording mode={mode}")
 
                         # Start timeout timer
