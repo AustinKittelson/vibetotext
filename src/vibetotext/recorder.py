@@ -238,6 +238,8 @@ class HotkeyListener:
         def on_press(key):
             try:
                 key_name = key.char.lower() if hasattr(key, 'char') and key.char else key.name.lower()
+                # Normalize modifier keys on Windows: ctrl_l -> ctrl, shift_r -> shift, etc.
+                key_name = key_name.replace('_l', '').replace('_r', '')
             except AttributeError:
                 return
 
@@ -270,6 +272,8 @@ class HotkeyListener:
         def on_release(key):
             try:
                 key_name = key.char.lower() if hasattr(key, 'char') and key.char else key.name.lower()
+                # Normalize modifier keys on Windows: ctrl_l -> ctrl, shift_r -> shift, etc.
+                key_name = key_name.replace('_l', '').replace('_r', '')
             except AttributeError:
                 return
 

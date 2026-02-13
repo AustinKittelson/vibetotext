@@ -237,6 +237,7 @@ def _ensure_ui_process():
 
 def show_recording():
     """Show recording indicator at bottom center of screen."""
+    print("[UI] show_recording() called")  # Debug
     _ensure_ui_process()
     screen_info = _get_cursor_and_screen()
     _write_ipc({
