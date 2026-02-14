@@ -29,7 +29,7 @@ class AudioRecorder:
     NUM_BARS = 25
     FFT_SIZE = 512
     SMOOTHING = 0.7  # 70% previous, 30% new (like Web Audio smoothingTimeConstant)
-    SILENCE_THRESHOLD = 0.08
+    SILENCE_THRESHOLD = 0.15  # Increased to filter out fan noise and ambient sounds
     MIN_FREQ_BIN = 4  # Skip sub-bass rumble (~125Hz at 16kHz SR)
 
     def __init__(self, sample_rate: int = 16000, device: int | None = None):

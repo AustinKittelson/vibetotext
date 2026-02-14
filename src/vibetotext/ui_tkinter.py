@@ -60,6 +60,7 @@ class WaveformWindow:
         self.levels = [0.0] * 25
         self.recording = False
         self.last_data = {}
+        self.hidden = True  # Start hidden — shown on first recording
 
         # Animation state
         self.base_width = 140
@@ -71,11 +72,15 @@ class WaveformWindow:
         self.anchor_right = 0
         self.anchor_top = 0
 
+        # Start hidden until first recording
+        self.root.withdraw()
+
         # Start update loop
         self.update()
 
     def update(self):
         """Update waveform from IPC file."""
+        # Read IPC data — narrow try/except so animation always runs
         try:
             if os.path.exists(IPC_FILE):
                 with open(IPC_FILE, "r") as f:
@@ -120,6 +125,7 @@ class WaveformWindow:
                     self.canvas.config(width=self.width, height=self.height)
                     self.root.deiconify()
                     self.root.lift()
+                    self.hidden = False
 
                 # Update levels with decay
                 if "levels" in data and self.recording:
@@ -134,51 +140,52 @@ class WaveformWindow:
                     self.levels = [l * 0.9 for l in self.levels]
                 else:
                     self.levels = [0.0] * 25
-
-                # Animate window size based on recording state (hotkey press/release)
-                if self.recording:
-                    # Grow when recording (hotkey held)
-                    self.target_scale = 3.0
-                else:
-                    # Shrink when not recording (hotkey released)
-                    self.target_scale = 1.0
-
-                # Always animate (even when not recording, to shrink back)
-                if True:
-
-                    # Smooth animation with spring-like physics
-                    scale_diff = self.target_scale - self.current_scale
-
-                    if abs(scale_diff) > 0.01:
-                        # Acceleration towards target with damping
-                        spring_strength = 0.15
-                        damping = 0.7
-
-                        self.scale_velocity = self.scale_velocity * damping + scale_diff * spring_strength
-                        self.current_scale += self.scale_velocity
-
-                        # Clamp to valid range
-                        self.current_scale = max(1.0, min(3.0, self.current_scale))
-
-                        # Update window size - grow left and down from anchored right/top
-                        self.width = int(self.base_width * self.current_scale)
-                        self.height = int(self.base_height * self.current_scale)
-                        new_x = self.anchor_right - self.width
-                        new_y = self.anchor_top  # Top stays fixed
-
-                        self.root.geometry(f"{self.width}x{self.height}+{new_x}+{new_y}")
-                        self.canvas.config(width=self.width, height=self.height)
-                    elif abs(scale_diff) <= 0.01 and abs(self.scale_velocity) > 0.001:
-                        # Settle at target
-                        self.scale_velocity *= 0.5
-                        if abs(self.scale_velocity) < 0.001:
-                            self.scale_velocity = 0
-                            self.current_scale = self.target_scale
-
-                self.draw_waveform()
-
+        except json.JSONDecodeError:
+            pass  # Partial/corrupt IPC file — retry next frame
         except Exception:
             pass
+
+        # Animation and drawing always run, even if IPC read failed
+        if self.recording:
+            self.target_scale = 3.0
+        else:
+            self.target_scale = 1.0
+
+        # Smooth animation with spring-like physics
+        scale_diff = self.target_scale - self.current_scale
+
+        if abs(scale_diff) > 0.01:
+            spring_strength = 0.15
+            damping = 0.7
+
+            self.scale_velocity = self.scale_velocity * damping + scale_diff * spring_strength
+            self.current_scale += self.scale_velocity
+
+            # Clamp to valid range
+            self.current_scale = max(1.0, min(3.0, self.current_scale))
+
+            # Update window size - grow left and down from anchored right/top
+            self.width = int(self.base_width * self.current_scale)
+            self.height = int(self.base_height * self.current_scale)
+            new_x = self.anchor_right - self.width
+            new_y = self.anchor_top  # Top stays fixed
+
+            self.root.geometry(f"{self.width}x{self.height}+{new_x}+{new_y}")
+            self.canvas.config(width=self.width, height=self.height)
+        elif abs(scale_diff) <= 0.01 and abs(self.scale_velocity) > 0.001:
+            # Settle at target
+            self.scale_velocity *= 0.5
+            if abs(self.scale_velocity) < 0.001:
+                self.scale_velocity = 0
+                self.current_scale = self.target_scale
+
+        # Hide window completely once shrink animation settles at idle
+        if not self.recording and not self.hidden and self.current_scale <= 1.01 and abs(self.scale_velocity) < 0.001:
+            self.root.withdraw()
+            self.hidden = True
+
+        if not self.hidden:
+            self.draw_waveform()
 
         # Schedule next update (~30fps)
         self.root.after(33, self.update)

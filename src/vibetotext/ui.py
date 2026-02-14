@@ -20,6 +20,7 @@ else:
     _ipc_file = os.path.join(tempfile.gettempdir(), "vibetotext_ui_ipc.json")
 
 _ui_process = None
+_recording_active = False  # Guards async waveform writes; prevents race with hide_recording()
 
 # Non-blocking IPC queue and worker thread
 _ipc_queue = queue.Queue(maxsize=10)  # Small buffer, drop old frames if full
@@ -237,7 +238,9 @@ def _ensure_ui_process():
 
 def show_recording():
     """Show recording indicator at bottom center of screen."""
+    global _recording_active
     print("[UI] show_recording() called")  # Debug
+    _recording_active = True
     _ensure_ui_process()
     screen_info = _get_cursor_and_screen()
     _write_ipc({
@@ -248,7 +251,15 @@ def show_recording():
 
 
 def hide_recording():
-    """Switch to idle state (flat line, don't hide)."""
+    """Signal UI to stop recording and hide."""
+    global _recording_active
+    _recording_active = False
+    # Drain any pending async waveform writes that carry recording=True
+    while not _ipc_queue.empty():
+        try:
+            _ipc_queue.get_nowait()
+        except queue.Empty:
+            break
     _write_ipc({"recording": False})
 
 
@@ -261,6 +272,8 @@ def update_waveform(levels):
     IMPORTANT: This is called from the audio callback thread.
     Must be non-blocking to avoid deadlock on stream.stop().
     """
+    if not _recording_active:
+        return  # Don't queue waveform updates after recording stopped
     global _update_counter
     _update_counter += 1
     # Use async write to avoid blocking the audio callback thread

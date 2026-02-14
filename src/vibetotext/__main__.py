@@ -118,6 +118,8 @@ def main():
         try:
             from vibetotext import ui as ui_module
             ui = ui_module
+            import atexit
+            atexit.register(ui.stop_ui)
             print("[DEBUG] UI module loaded successfully", flush=True)
         except Exception as e:
             import traceback
@@ -197,10 +199,10 @@ def main():
             if mode == "history":
                 return
 
-            audio = recorder.stop()
-
+            # Hide UI FIRST for immediate visual feedback, then stop recorder
             if ui:
                 ui.hide_recording()
+            audio = recorder.stop()
 
             if len(audio) == 0:
                 return
@@ -280,6 +282,8 @@ def main():
                 ui.process_ui_events()
             time.sleep(0.05)
     except KeyboardInterrupt:
+        if ui:
+            ui.stop_ui()
         sys.exit(0)
 
 

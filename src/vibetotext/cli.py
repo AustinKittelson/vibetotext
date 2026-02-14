@@ -90,6 +90,8 @@ def main():
         try:
             from . import ui as ui_module
             ui = ui_module
+            import atexit
+            atexit.register(ui.stop_ui)
         except Exception as e:
             print(f"UI disabled: {e}")
 
@@ -188,9 +190,10 @@ def main():
 
     def on_stop(mode):
         try:
-            audio = recorder.stop()
+            # Hide UI FIRST for immediate visual feedback, then stop recorder
             if ui:
                 ui.hide_recording()
+            audio = recorder.stop()
             print(" done.")
 
             if len(audio) == 0:
@@ -307,6 +310,8 @@ def main():
             time.sleep(0.05)
     except KeyboardInterrupt:
         print("\nExiting.")
+        if ui:
+            ui.stop_ui()
         sys.exit(0)
 
 
